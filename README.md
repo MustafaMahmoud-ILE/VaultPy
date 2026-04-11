@@ -37,6 +37,15 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 
 ---
 
+### 🛡️ Password Intelligence (Strength Meter)
+*Real-time security feedback. Visual indicators help you choose strong, entropy-rich passwords for every account.*
+
+<p align="center">
+  <img src="assets/strength_meter_preview.png" width="70%" alt="Strength Meter Screen">
+</p>
+
+---
+
 ## ✨ Key Features
 
 - **Pro-Grade UI/UX**: Frameless window architecture with custom title bar, rounded corners, and smooth fade-in animations.
