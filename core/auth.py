@@ -31,6 +31,10 @@ class AuthManager:
             
         return False
 
+    def is_locked_out(self) -> bool:
+        """Checks if the account is locked after 5 failed attempts."""
+        return self.db.get_failed_attempts() >= 5
+
     def setup_vault(self, master_password: str) -> bool:
         """
         Initial vault setup: 
@@ -128,6 +132,9 @@ class AuthManager:
 
     def unlock_vault(self, master_password: str) -> bool:
         """Unlocks the vault by unwrapping the DEK using the password."""
+        if self.is_locked_out():
+            return False
+            
         meta = self.db.get_meta()
         if not meta: return False
             
@@ -138,9 +145,13 @@ class AuthManager:
             try:
                 dek_hex = CryptoManager.decrypt(p_wrapped, p_kek)
                 self.master_key = bytes.fromhex(dek_hex)
+                self.db.reset_failed_attempts()
                 return True
             except Exception:
+                self.db.increment_failed_attempts()
                 return False
+        
+        self.db.increment_failed_attempts()
         return False
 
     def unlock_with_recovery_phrase(self, phrase: str) -> bool:
@@ -229,6 +240,7 @@ class AuthManager:
                 r_wrapped, r_salt, 
                 t_secret_obf, t_wrapped
             )
+            self.db.reset_failed_attempts()
             return True
         except Exception:
             return False

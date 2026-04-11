@@ -40,6 +40,7 @@ class DatabaseManager:
                     recovery_salt BLOB,
                     totp_secret TEXT,
                     totp_wrapped_key BLOB,
+                    failed_attempts INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -70,6 +71,8 @@ class DatabaseManager:
                 cursor.execute("ALTER TABLE meta ADD COLUMN totp_secret TEXT")
             if 'totp_wrapped_key' not in columns:
                 cursor.execute("ALTER TABLE meta ADD COLUMN totp_wrapped_key BLOB")
+            if 'failed_attempts' not in columns:
+                cursor.execute("ALTER TABLE meta ADD COLUMN failed_attempts INTEGER DEFAULT 0")
                 
             conn.commit()
 
@@ -103,7 +106,7 @@ class DatabaseManager:
                    recovery_salt = ?,
                    totp_secret = ?,
                    totp_wrapped_key = ?
-                   WHERE id = 1""",
+                   WHERE id = (SELECT id FROM meta LIMIT 1)""",
                 (p_wrapped, r_wrapped, r_salt, t_secret, t_wrapped)
             )
             conn.commit()
@@ -112,8 +115,27 @@ class DatabaseManager:
         """Retrieves all vault metadata."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT password_hash, salt, password_wrapped_key, recovery_wrapped_key, recovery_salt, totp_secret, totp_wrapped_key FROM meta LIMIT 1")
+            cursor.execute("SELECT password_hash, salt, password_wrapped_key, recovery_wrapped_key, recovery_salt, totp_secret, totp_wrapped_key, failed_attempts FROM meta LIMIT 1")
             return cursor.fetchone()
+
+    def get_failed_attempts(self) -> int:
+        """Returns the current number of failed master password attempts."""
+        meta = self.get_meta()
+        return meta[7] if meta else 0
+
+    def increment_failed_attempts(self):
+        """Increments the failed attempts counter in the DB."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE meta SET failed_attempts = failed_attempts + 1 WHERE id = (SELECT id FROM meta LIMIT 1)")
+            conn.commit()
+
+    def reset_failed_attempts(self):
+        """Resets the failed attempts counter to zero."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE meta SET failed_attempts = 0 WHERE id = (SELECT id FROM meta LIMIT 1)")
+            conn.commit()
 
     def add_account(self, service, username, password_enc, totp_enc=None, notes_enc=None):
         """Adds a new account entry."""

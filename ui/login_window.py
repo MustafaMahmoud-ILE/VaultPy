@@ -228,7 +228,15 @@ class LoginWindow(QWidget):
     def set_setup_mode(self):
         self.is_setup = True
         self.subtitle_label.setText("Create your master password to initialize your personal vault.")
+        self.subtitle_label.setStyleSheet("font-size: 14px; color: #bac2de; margin-bottom: 20px;")
+        
+        self.password_input.setPlaceholderText("Master Password")
+        self.password_input.setEnabled(True)
+        
         self.action_button.setText("Initialize Vault")
+        self.action_button.setEnabled(True)
+        self.action_button.setStyleSheet("") 
+        
         self.confirm_password_input.setVisible(True)
         self.setup_warning.setVisible(True)
         self.recovery_phrase_btn.setVisible(False)
@@ -237,8 +245,31 @@ class LoginWindow(QWidget):
 
     def set_login_mode(self):
         self.is_setup = False
-        self.subtitle_label.setText("Enter password to decrypt your secure repository.")
-        self.action_button.setText("Unlock Vault")
+        
+        if self.auth.is_locked_out():
+            self.subtitle_label.setText("⚠️ Vault Locked: Too many failed attempts. Use recovery phrase or OTP to reset access.")
+            self.subtitle_label.setStyleSheet("font-size: 13px; color: #f38ba8; font-weight: bold; margin-bottom: 20px;")
+            self.password_input.setPlaceholderText("LOCKED")
+            self.password_input.setEnabled(False)
+            self.action_button.setText("Access Denied")
+            self.action_button.setEnabled(False)
+            self.action_button.setStyleSheet("background: #313244; color: #585b70;")
+            
+            # Highlight recovery buttons
+            self.recovery_phrase_btn.setStyleSheet("color: #fab387; font-weight: 800; font-size: 14px;")
+            self.recovery_otp_btn.setStyleSheet("color: #89b4fa; font-weight: 800; font-size: 14px;")
+        else:
+            self.subtitle_label.setText("Enter password to decrypt your secure repository.")
+            self.subtitle_label.setStyleSheet("font-size: 14px; color: #bac2de; margin-bottom: 20px;")
+            self.password_input.setPlaceholderText("Master Password")
+            self.password_input.setEnabled(True)
+            self.action_button.setText("Unlock Vault")
+            self.action_button.setEnabled(True)
+            self.action_button.setStyleSheet("") # Revert to stylesheet default
+            
+            self.recovery_phrase_btn.setStyleSheet("")
+            self.recovery_otp_btn.setStyleSheet("color: #89b4fa;")
+
         self.confirm_password_input.setVisible(False)
         self.setup_warning.setVisible(False)
         self.recovery_phrase_btn.setVisible(True)
@@ -374,5 +405,11 @@ class LoginWindow(QWidget):
                 if self.auth.unlock_vault(password):
                     self.login_success.emit()
                 else:
-                    QMessageBox.warning(self, "Error", "Invalid Master Password.")
+                    if self.auth.is_locked_out():
+                        QMessageBox.critical(self, "Security Lockout", "Too many failed attempts. Your vault has been locked for security.\n\nYou must use your recovery phrase or OTP to reset your password.")
+                        self.set_login_mode() # Refresh UI to locked state
+                    else:
+                        failed_count = self.auth.db.get_failed_attempts()
+                        remaining = 5 - failed_count
+                        QMessageBox.warning(self, "Error", f"Invalid Master Password.\n\n{remaining} attempts remaining before lockout.")
                     self.password_input.clear()
