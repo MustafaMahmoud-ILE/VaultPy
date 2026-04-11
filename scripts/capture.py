@@ -7,6 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from PySide6.QtWidgets import QApplication
 from ui.login_window import LoginWindow
 from ui.vault_window import VaultWindow
+from ui.add_account_dialog import AddAccountDialog
 from models.account import Account
 from core.auth import AuthManager
 from core.database import DatabaseManager
@@ -60,13 +61,26 @@ def capture_screenshot():
         vault_win.show()
         QApplication.processEvents()
         
+        # 3. Capture Add Account Dialog (to show Strength Meter)
+        add_dialog = AddAccountDialog(vault_win)
+        add_dialog.password_input.setText("Testing!StrongPassword@2026")
+        add_dialog.show()
+        QApplication.processEvents()
+
         def finalize():
-            screenshot = vault_win.grab()
-            screenshot.save(os.path.join(assets_dir, "vault_preview.png"))
-            print("Success: Captured vault_preview.png in assets folder!")
+            # Capture Dialog
+            screenshot = add_dialog.grab()
+            screenshot.save(os.path.join(assets_dir, "strength_meter_preview.png"))
+            print("Success: Captured strength_meter_preview.png")
+            
+            # Capture Vault
+            screenshot_vault = vault_win.grab()
+            screenshot_vault.save(os.path.join(assets_dir, "vault_preview.png"))
+            print("Success: Captured vault_preview.png")
+            
             app.quit()
             
-        QTimer.singleShot(800, finalize)
+        QTimer.singleShot(1500, finalize) # Wait for UI to settle
 
     def step_1_capture_login():
         screenshot = login_win.grab()

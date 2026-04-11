@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, 
     QLabel, QTextEdit, QFormLayout, QGroupBox, QCheckBox, QSpinBox,
-    QFrame
+    QFrame, QProgressBar
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
@@ -76,6 +76,16 @@ class AddAccountDialog(QDialog):
                 spacing: 10px;
                 color: #cdd6f4;
             }
+            QProgressBar {
+                background-color: #313244;
+                border-radius: 4px;
+                text-align: center;
+                height: 6px;
+                border: none;
+            }
+            QProgressBar::chunk {
+                border-radius: 4px;
+            }
         """)
 
         layout = QVBoxLayout(self)
@@ -106,7 +116,25 @@ class AddAccountDialog(QDialog):
         self.gen_toggle_btn.setCursor(Qt.PointingHandCursor)
         self.gen_toggle_btn.clicked.connect(self.show_generator_options)
         pass_layout.addWidget(self.gen_toggle_btn)
-        form.addRow("🔑 Password:", pass_layout)
+        
+        # Strength Meter Layout
+        self.strength_label = QLabel("Strength: ---")
+        self.strength_label.setStyleSheet("font-size: 11px; color: #6e6a86;")
+        
+        self.strength_bar = QProgressBar()
+        self.strength_bar.setRange(0, 100)
+        self.strength_bar.setValue(0)
+        self.strength_bar.setTextVisible(False)
+        self.strength_bar.setMaximumHeight(6)
+        
+        pass_wrapper.addLayout(pass_layout)
+        pass_wrapper.addWidget(self.strength_bar)
+        pass_wrapper.addWidget(self.strength_label)
+        
+        form.addRow("🔑 Password:", pass_wrapper)
+        
+        # Connect real-time update
+        self.password_input.textChanged.connect(self.update_strength)
 
         # Generator Options
         self.gen_group = QGroupBox("Password Requirements")
@@ -183,6 +211,53 @@ class AddAccountDialog(QDialog):
             use_symbols=self.use_sym.isChecked()
         )
         self.password_input.setText(pwd)
+
+    def update_strength(self, password):
+        """Calculates password entropy and updates the UI meter."""
+        if not password:
+            self.strength_bar.setValue(0)
+            self.strength_label.setText("Strength: ---")
+            return
+
+        score = 0
+        length = len(password)
+        
+        # 1. Length Points
+        if length >= 8: score += 1
+        if length >= 12: score += 1
+        if length >= 16: score += 1
+        
+        # 2. Diversity Points
+        import re
+        if re.search(r"[a-z]", password) and re.search(r"[A-Z]", password): score += 1
+        if re.search(r"\d", password): score += 1
+        if re.search(r"[!@#$%^&*(),.?\":{}|<>_]", password): score += 1
+
+        # Map score (max ~6) to scale 0-100
+        # Percentage = (score / 6) * 100
+        percent = min(100, int((score / 6) * 100))
+        self.strength_bar.setValue(percent)
+
+        # Color and Text mapping
+        if length < 8:
+            color = "#f38ba8" # Maroon/Red
+            text = "Too Short"
+            self.strength_bar.setValue(15) # Show some red even if score is low
+        elif score <= 2:
+            color = "#fab387" # Peach/Orange
+            text = "Weak"
+        elif score <= 3:
+            color = "#f9e2af" # Yellow
+            text = "Fair"
+        elif score <= 5:
+            color = "#a6e3a1" # Green
+            text = "Good"
+        else:
+            color = "#94e2d5" # Teal/Cyan
+            text = "Strong"
+
+        self.strength_bar.setStyleSheet(f"QProgressBar::chunk {{ background-color: {color}; }}")
+        self.strength_label.setText(f"Strength: {text}")
 
     def get_data(self):
         return {
