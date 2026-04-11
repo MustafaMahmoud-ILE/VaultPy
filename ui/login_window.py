@@ -1,12 +1,15 @@
 import os
+import shutil
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, 
-    QLabel, QFrame, QMessageBox, QGraphicsOpacityEffect, QGraphicsDropShadowEffect
+    QLabel, QFrame, QMessageBox, QGraphicsOpacityEffect, QGraphicsDropShadowEffect,
+    QFileDialog
 )
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QPoint
 from PySide6.QtGui import QPixmap, QIcon, QColor
 from core.auth import AuthManager
 from ui.components.title_bar import CustomTitleBar
+from ui.recovery_setup_dialog import RecoverySetupDialog
 
 class LoginWindow(QWidget):
     """Window for master password setup and login (Frameless)."""
@@ -20,7 +23,7 @@ class LoginWindow(QWidget):
         # Frameless & Translucent State
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(450, 650)
+        self.setFixedSize(450, 680) # Increased height for recovery link
         
         self.init_ui()
         self.apply_fade_in()
@@ -68,6 +71,31 @@ class LoginWindow(QWidget):
             QPushButton#PrimaryAction:hover {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #b4befe, stop:1 #f5c2e7);
             }
+            QPushButton#ResetLink {
+                color: #585b70;
+                text-decoration: underline;
+                background: transparent;
+                border: none;
+                font-size: 12px;
+                margin-top: 5px;
+            }
+            QPushButton#RecoveryLink {
+                color: #fab387;
+                text-decoration: underline;
+                background: transparent;
+                border: none;
+                font-size: 13px;
+                font-weight: bold;
+                margin-top: 15px;
+            }
+            QPushButton#ImportLink {
+                color: #89b4fa;
+                text-decoration: underline;
+                background: transparent;
+                border: none;
+                font-size: 12px;
+                margin-top: 5px;
+            }
         """)
 
         # Main Layout (containing the rounded container)
@@ -89,7 +117,7 @@ class LoginWindow(QWidget):
         # 2. Content Section
         self.content_widget = QWidget()
         self.content_layout = QVBoxLayout(self.content_widget)
-        self.content_layout.setContentsMargins(30, 10, 30, 40)
+        self.content_layout.setContentsMargins(30, 5, 30, 30)
         self.content_layout.setAlignment(Qt.AlignCenter)
 
         # Container Card
@@ -99,7 +127,7 @@ class LoginWindow(QWidget):
         self.card_layout.setContentsMargins(40, 40, 40, 40)
         self.card_layout.setSpacing(15)
 
-        # Logo Section (Text-only for cleaner look)
+        # Logo Section
         self.logo_label = QLabel("VaultPy")
         self.logo_label.setAlignment(Qt.AlignCenter)
         self.logo_label.setStyleSheet("""
@@ -132,12 +160,12 @@ class LoginWindow(QWidget):
 
         self.card_layout.addSpacing(10)
 
-        # Setup Warning (Initially hidden)
-        self.setup_warning = QLabel("⚠ Secure Choice: This password CANNOT be recovered. If lost, all data will be permanently inaccessible.")
+        # Setup Info
+        self.setup_warning = QLabel("🛡️ Recovery: A 24-word seed phrase will be generated to help you recover your vault if you lose this password.")
         self.setup_warning.setObjectName("SetupWarning")
         self.setup_warning.setWordWrap(True)
         self.setup_warning.setAlignment(Qt.AlignCenter)
-        self.setup_warning.setStyleSheet("color: #fab387; font-size: 12px; font-weight: bold; margin-bottom: 5px;")
+        self.setup_warning.setStyleSheet("color: #a6e3a1; font-size: 12px; margin-bottom: 5px;")
         self.setup_warning.setVisible(False)
         self.card_layout.addWidget(self.setup_warning)
 
@@ -148,10 +176,24 @@ class LoginWindow(QWidget):
         self.action_button.clicked.connect(self.handle_action)
         self.card_layout.addWidget(self.action_button)
 
-        # Forgot Password Button (Initially hidden)
-        self.reset_btn = QPushButton("Forgot password? Reset Vault")
+        # Recovery Link
+        self.recovery_btn = QPushButton("Lost password? Use Recovery Phrase")
+        self.recovery_btn.setObjectName("RecoveryLink")
+        self.recovery_btn.setCursor(Qt.PointingHandCursor)
+        self.recovery_btn.clicked.connect(self.handle_recovery)
+        self.recovery_btn.setVisible(False)
+        self.card_layout.addWidget(self.recovery_btn)
+
+        # Import Link
+        self.import_btn = QPushButton("📥 Import Vault (.pyvault)")
+        self.import_btn.setObjectName("ImportLink")
+        self.import_btn.setCursor(Qt.PointingHandCursor)
+        self.import_btn.clicked.connect(self.handle_import)
+        self.card_layout.addWidget(self.import_btn)
+
+        # Factory Reset Link
+        self.reset_btn = QPushButton("Factory Reset (Wipe All Data)")
         self.reset_btn.setObjectName("ResetLink")
-        self.reset_btn.setStyleSheet("color: #585b70; text-decoration: underline; background: transparent; border: none; font-size: 12px; margin-top: 10px;")
         self.reset_btn.setCursor(Qt.PointingHandCursor)
         self.reset_btn.clicked.connect(self.handle_reset)
         self.reset_btn.setVisible(False)
@@ -160,7 +202,7 @@ class LoginWindow(QWidget):
         self.content_layout.addWidget(self.card)
         self.container_layout.addWidget(self.content_widget)
 
-        # Add Shadow Effect
+        # Shadow
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(20)
         shadow.setXOffset(0)
@@ -170,7 +212,6 @@ class LoginWindow(QWidget):
 
         self.layout.addWidget(self.container)
 
-        # Determine mode
         if self.auth.is_setup_required():
             self.set_setup_mode()
         else:
@@ -182,6 +223,7 @@ class LoginWindow(QWidget):
         self.action_button.setText("Initialize Vault")
         self.confirm_password_input.setVisible(True)
         self.setup_warning.setVisible(True)
+        self.recovery_btn.setVisible(False)
         self.reset_btn.setVisible(False)
 
     def set_login_mode(self):
@@ -190,23 +232,69 @@ class LoginWindow(QWidget):
         self.action_button.setText("Unlock Vault")
         self.confirm_password_input.setVisible(False)
         self.setup_warning.setVisible(False)
+        self.recovery_btn.setVisible(True)
         self.reset_btn.setVisible(True)
+
+    def handle_import(self):
+        """Allows user to restore vault from a .pyvault backup."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Import Vault", "", "VaultPy Backup (*.pyvault)"
+        )
+        if file_path:
+            confirm = QMessageBox.question(
+                self, "Confirm Import",
+                "Importing a vault will OVERWRITE your current data. Are you sure you want to proceed?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if confirm == QMessageBox.Yes:
+                try:
+                    # Target is the current DB path
+                    target_path = self.auth.db.db_path
+                    shutil.copy(file_path, target_path)
+                    
+                    QMessageBox.information(self, "Success", "Vault imported successfully. Please log in.")
+                    
+                    # Refresh UI mode based on imported DB
+                    if self.auth.is_setup_required():
+                        self.set_setup_mode()
+                    else:
+                        self.set_login_mode()
+                    
+                    self.password_input.clear()
+                    self.confirm_password_input.clear()
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Failed to import vault: {e}")
+
+    def handle_recovery(self):
+        """Handle access restoration via 24-word phrase."""
+        from PySide6.QtWidgets import QInputDialog
+        phrase, ok = QInputDialog.getMultiLineText(self, "Vault Recovery", "Enter your 24-word recovery phrase:")
+        if ok and phrase:
+            if self.auth.unlock_with_recovery_phrase(phrase):
+                # Prompt for new password immediately
+                new_pass, ok2 = QInputDialog.getText(self, "Reset Password", "Access Restored! Enter a NEW master password:", QLineEdit.Password)
+                if ok2 and len(new_pass) >= 12:
+                    if self.auth.reset_password(new_pass):
+                        QMessageBox.information(self, "Success", "Password reset successfully. You are now logged in.")
+                        self.login_success.emit()
+                    else:
+                        QMessageBox.critical(self, "Error", "Failed to reset password.")
+                elif ok2:
+                    QMessageBox.warning(self, "Error", "Password too short. Login cancelled for safety.")
+            else:
+                QMessageBox.critical(self, "Error", "Invalid Recovery Phrase. Access Denied.")
 
     def handle_reset(self):
         msg = "Are you sure you want to RESET your vault?\n\nThis will PERMANENTLY DELETE all accounts and passwords. This action is IRREVERSIBLE."
         reply = QMessageBox.question(self, "Factory Reset", msg, QMessageBox.Yes | QMessageBox.No)
-        
         if reply == QMessageBox.Yes:
-            # Final text confirmation
             from PySide6.QtWidgets import QInputDialog
             text, ok = QInputDialog.getText(self, "Security Confirmation", "To confirm data deletion, please type 'RESET' in uppercase:")
-            
             if ok and text == "RESET":
                 self.auth.db.factory_reset()
-                QMessageBox.information(self, "Success", "Vault wiped successfully. You can now set up a new master password.")
+                QMessageBox.information(self, "Success", "Vault wiped successfully.")
                 self.set_setup_mode()
                 self.password_input.clear()
-                self.confirm_password_input.clear()
             elif ok:
                 QMessageBox.critical(self, "Error", "Invalid confirmation code. Reset cancelled.")
 
@@ -233,10 +321,25 @@ class LoginWindow(QWidget):
                 return
             
             if self.auth.setup_vault(password):
+                # Show recovery phrase immediately
+                dialog = RecoverySetupDialog(self.auth.temp_recovery_phrase, self)
+                dialog.exec()
                 self.login_success.emit()
         else:
-            if self.auth.unlock_vault(password):
-                self.login_success.emit()
+            # Check for migration first
+            if self.auth.needs_migration():
+                if self.auth.unlock_vault(password):
+                    # Perform migration
+                    phrase = self.auth.migrate_to_wrapped_keys(password)
+                    dialog = RecoverySetupDialog(phrase, self, is_migration=True)
+                    dialog.exec()
+                    self.login_success.emit()
+                else:
+                    QMessageBox.warning(self, "Error", "Invalid Master Password.")
+                    self.password_input.clear()
             else:
-                QMessageBox.warning(self, "Error", "Invalid Master Password.")
-                self.password_input.clear()
+                if self.auth.unlock_vault(password):
+                    self.login_success.emit()
+                else:
+                    QMessageBox.warning(self, "Error", "Invalid Master Password.")
+                    self.password_input.clear()

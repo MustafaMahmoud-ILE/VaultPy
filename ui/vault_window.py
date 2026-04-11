@@ -1,9 +1,11 @@
 import os
+import shutil
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, 
     QPushButton, QLabel, QListWidget, QListWidgetItem, QFrame, 
     QSplitter, QScrollArea, QMessageBox, QSpacerItem, QSizePolicy,
-    QGraphicsOpacityEffect, QGraphicsDropShadowEffect, QProgressBar
+    QGraphicsOpacityEffect, QGraphicsDropShadowEffect, QProgressBar,
+    QFileDialog
 )
 from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve, QPoint
 from PySide6.QtGui import QIcon, QFont, QPixmap, QColor
@@ -266,6 +268,7 @@ class VaultWindow(QWidget):
         lock_btn.setStyleSheet("color: #f38ba8; font-weight: bold; background: transparent; border: none;")
         lock_btn.setCursor(Qt.PointingHandCursor)
         lock_btn.clicked.connect(self.lock_requested.emit)
+        status_layout.addWidget(lock_btn)
         # Check for Updates Button
         status_layout.addSpacing(15)
         self.update_btn = QPushButton("🔄 Check for Updates")
@@ -273,6 +276,14 @@ class VaultWindow(QWidget):
         self.update_btn.setCursor(Qt.PointingHandCursor)
         self.update_btn.clicked.connect(self.request_update_check)
         status_layout.addWidget(self.update_btn)
+
+        # Backup Button
+        status_layout.addSpacing(15)
+        self.backup_btn = QPushButton("💾 Backup Vault (.pyvault)")
+        self.backup_btn.setStyleSheet("color: #a6e3a1; font-size: 11px; font-weight: bold; background: transparent; border: none;")
+        self.backup_btn.setCursor(Qt.PointingHandCursor)
+        self.backup_btn.clicked.connect(self.handle_backup)
+        status_layout.addWidget(self.backup_btn)
         
         # Download Progress (Hidden by default)
         self.progress_bar = QProgressBar()
@@ -508,3 +519,17 @@ class VaultWindow(QWidget):
             self.db.delete_account(acc_id)
             self.refresh_accounts()
             self.setup_details_placeholder()
+
+    def handle_backup(self):
+        """Exports the current database as an encrypted .pyvault file."""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Backup Vault", "", "VaultPy Backup (*.pyvault)"
+        )
+        if file_path:
+            if not file_path.endswith(".pyvault"):
+                file_path += ".pyvault"
+            try:
+                shutil.copy(self.db.db_path, file_path)
+                QMessageBox.information(self, "Success", f"Vault backup created successfully at:\n{file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to create backup: {e}")

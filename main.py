@@ -69,7 +69,7 @@ class DownloadWorker(QThread):
 
 class VaultApp(QObject):
     IDLE_TIMEOUT = 2 * 60 * 1000  # 2 minutes in ms
-    VERSION = "1.1.0"
+    VERSION = "1.2.0"
     update_detected = Signal(str, str, str) # version, url, notes
 
     def __init__(self):

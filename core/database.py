@@ -15,8 +15,9 @@ class DatabaseManager:
                 # Fallback for non-Windows or if APPDATA is missing
                 db_path = os.path.join(os.path.expanduser("~"), ".vaultpy", "vault.db")
 
-        # Ensure data directory exists
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        # Ensure data directory exists (unless using in-memory DB for tests)
+        if db_path != ":memory:":
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db_path = db_path
         self._initialize_db()
 
@@ -34,6 +35,9 @@ class DatabaseManager:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     password_hash TEXT NOT NULL,
                     salt BLOB NOT NULL,
+                    password_wrapped_key BLOB,
+                    recovery_wrapped_key BLOB,
+                    recovery_salt BLOB,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -50,6 +54,17 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Migration: Add columns if they don't exist (for existing v1.1.0 databases)
+            cursor.execute("PRAGMA table_info(meta)")
+            columns = [info[1] for info in cursor.fetchall()]
+            if 'password_wrapped_key' not in columns:
+                cursor.execute("ALTER TABLE meta ADD COLUMN password_wrapped_key BLOB")
+            if 'recovery_wrapped_key' not in columns:
+                cursor.execute("ALTER TABLE meta ADD COLUMN recovery_wrapped_key BLOB")
+            if 'recovery_salt' not in columns:
+                cursor.execute("ALTER TABLE meta ADD COLUMN recovery_salt BLOB")
+                
             conn.commit()
 
     def is_setup(self):
@@ -59,21 +74,37 @@ class DatabaseManager:
             cursor.execute("SELECT COUNT(*) FROM meta")
             return cursor.fetchone()[0] > 0
 
-    def save_setup(self, password_hash, salt):
-        """Saves the initial master password hash and salt."""
+    def save_setup(self, password_hash, salt, p_wrapped=None, r_wrapped=None, r_salt=None):
+        """Saves the initial setup data."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO meta (password_hash, salt) VALUES (?, ?)",
-                (password_hash, salt)
+                """INSERT INTO meta 
+                   (password_hash, salt, password_wrapped_key, recovery_wrapped_key, recovery_salt) 
+                   VALUES (?, ?, ?, ?, ?)""",
+                (password_hash, salt, p_wrapped, r_wrapped, r_salt)
+            )
+            conn.commit()
+
+    def update_vault_keys(self, p_wrapped, r_wrapped, r_salt):
+        """Updates the wrapped keys in the meta table (used during migration/reset)."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """UPDATE meta SET 
+                   password_wrapped_key = ?, 
+                   recovery_wrapped_key = ?, 
+                   recovery_salt = ? 
+                   WHERE id = 1""",
+                (p_wrapped, r_wrapped, r_salt)
             )
             conn.commit()
 
     def get_meta(self):
-        """Retrieves the password hash and salt."""
+        """Retrieves all vault metadata."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT password_hash, salt FROM meta LIMIT 1")
+            cursor.execute("SELECT password_hash, salt, password_wrapped_key, recovery_wrapped_key, recovery_salt FROM meta LIMIT 1")
             return cursor.fetchone()
 
     def add_account(self, service, username, password_enc, totp_enc=None, notes_enc=None):
@@ -138,3 +169,16 @@ class DatabaseManager:
             conn.commit()
         # Re-initialize the tables
         self._initialize_db()
+
+    def reset_vault_auth(self, password_hash, salt, p_wrapped, r_wrapped, r_salt):
+        """Atomically wipes and re-initializes vault authentication metadata. Fixes locking issues."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM meta")
+            cursor.execute(
+                """INSERT INTO meta 
+                   (password_hash, salt, password_wrapped_key, recovery_wrapped_key, recovery_salt) 
+                   VALUES (?, ?, ?, ?, ?)""",
+                (password_hash, salt, p_wrapped, r_wrapped, r_salt)
+            )
+            conn.commit()

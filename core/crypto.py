@@ -47,6 +47,45 @@ class CryptoManager:
             raise ValueError("Decryption failed. Invalid key or corrupted data.") from e
 
     @staticmethod
+    def generate_dek() -> bytes:
+        """Generates a random 256-bit Data Encryption Key."""
+        return os.urandom(CryptoManager.KEY_SIZE)
+
+    @staticmethod
+    def generate_recovery_phrase() -> tuple[str, bytes]:
+        """
+        Generates a 24-word recovery phrase and its derived entropy.
+        Returns (phrase_string, entropy_bytes).
+        """
+        from core.wordlist import WORDS
+        entropy = os.urandom(32)  # 256 bits
+        
+        # Convert entropy to a mnemonic (Simplified BIP39-style)
+        # 256 bits / 11 bits per word = 23.27 words. 
+        # We'll use 24 words for simplicity and extra entropy.
+        indices = []
+        temp_entropy = int.from_bytes(entropy, 'big')
+        for _ in range(24):
+            indices.append(temp_entropy % 2048)
+            temp_entropy //= 2048
+            
+        phrase = " ".join([WORDS[i % len(WORDS)] for i in indices])
+        return phrase, entropy
+
+    @staticmethod
+    def derive_key_from_phrase(phrase: str, salt: bytes) -> bytes:
+        """Derives a key from a recovery phrase using Argon2id."""
+        return hash_secret_raw(
+            secret=phrase.strip().lower().encode(),
+            salt=salt,
+            time_cost=CryptoManager.ITERATIONS,
+            memory_cost=CryptoManager.MEMORY_COST,
+            parallelism=CryptoManager.PARALLELISM,
+            hash_len=CryptoManager.KEY_SIZE,
+            type=Type.ID
+        )
+
+    @staticmethod
     def hash_password(password: str) -> tuple[str, bytes]:
         """Hashes a password for storage using Argon2id. Returns (hash, salt)."""
         salt = os.urandom(16)

@@ -46,27 +46,27 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 
 ---
 
-## ✨ Key Features (v1.1.0)
+## ✨ Key Features (v1.2.0)
 
-- **Seamless Self-Updates**: Built-in background auto-updater instantly modernizes your app to the latest GitHub release.
-- **Persistent Data Safety**: Vaults are securely stored in `%APPDATA%`, saving your passwords safely across app updates.
-- **Pro-Grade UI/UX**: Frameless window architecture with custom title bar, rounded corners, and smooth fade-in animations.
-- **Master Password Protection**: Highly secure authentication via **Argon2id** hashing.
-- **Strong Encryption**: All secrets (passwords, notes, TOTP) are protected by **AES-256-GCM** authenticated encryption.
+- **🛡️ Disaster Recovery**: Introduced a **24-word Recovery Seed Phrase** (BIP39 style). Regain access even if you lose your Master Password.
+- **🔐 Wrapped Key Architecture**: Migration to a pro-grade security model using a random **Data Encryption Key (DEK)** wrapped by both password and recovery phrase.
+- **💾 Portable Backups**: Export your entire vault as a standalone, encrypted **.pyvault** file for manual off-site storage.
+- **🔄 Seamless Migration**: Automated upgrade path for v1.1.0 users to the new security model upon first login.
+- **📅 Pro UI/UX**: Professional frameless window architecture with custom title bar, rounded corners, and high-contrast visuals.
 - **2FA Support (TOTP)**: Built-in generator with live countdown, format sanitization, and high-visibility indicators.
-- **Smart Analytics**: Real-time **Auto-lock** countdown timer that monitors user activity.
-- **Security Hardening**:
-    *   **Single Instance Lock**: Prevents database corruption.
-    *   **Automatic Clipboard Clearing**: Clears sensitive data after 20 seconds.
-    *   **Safe Recovery**: "Factory Reset" mechanism with keyword confirmation.
+- **Strong Encryption**: All secrets are protected by **AES-256-GCM** authenticated encryption.
+- **Auto-lock Intelligence**: Real-time activity monitoring with customizable auto-lock timer.
 
-## 🛡️ Security Architecture
+## 🛡️ Security Architecture (v1.2.0)
 
-VaultPy prioritizes security through modern cryptographic standards:
+VaultPy employs a "Wrapped Key" model to ensure maximum security and recovery flexibility:
 
-1. **Password Hashing**: We use **Argon2id** (via `argon2-cffi`) for master password verification.
-2. **Key Derivation**: A 256-bit encryption key is derived using **Argon2id** with a unique salt.
-3. **Data Encryption**: All database secrets are encrypted using **AES-256-GCM** (authenticated encryption).
+1. **Master Secret**: A random 256-bit **Data Encryption Key (DEK)** is generated to encrypt all your data.
+2. **Key Wrapping**: The DEK is encrypted twice using **AES-256-GCM**:
+   - **Wrap A**: Using a key derived from your **Master Password** (via Argon2id).
+   - **Wrap B**: Using a key derived from your **24-word Recovery Phrase** (via Argon2id).
+3. **Double-Layer Protection**: Even if you change your password, the underlying DEK remains the same; only the wrap is updated. This makes recovery and password changes instant and safe.
+4. **Data Integrity**: All database entries use **AES-256-GCM** (authenticated encryption) to prevent tampering.
 
 ## 🚀 Getting Started
 

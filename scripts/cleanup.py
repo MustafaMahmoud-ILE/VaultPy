@@ -58,10 +58,10 @@ if __name__ == "__main__":
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     dist_path = os.path.join(project_root, 'dist', 'VaultPy')
     if os.path.exists(dist_path):
-        print("Build detected. Zipping VaultPy_v1.1.0.zip for distribution...")
+        print("Build detected. Zipping VaultPy_v1.2.0.zip for distribution...")
         try:
-            shutil.make_archive(os.path.join(project_root, 'VaultPy_v1.1.0'), 'zip', dist_path)
-            print("  Created: VaultPy_v1.1.0.zip")
+            shutil.make_archive(os.path.join(project_root, 'VaultPy_v1.2.0'), 'zip', dist_path)
+            print("  Created: VaultPy_v1.2.0.zip")
         except Exception as e:
             print(f"  Error zipping: {e}")
 
