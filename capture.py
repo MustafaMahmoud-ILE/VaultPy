@@ -34,7 +34,7 @@ def capture_screenshot():
         # We manually inject a fake key to bypass auth for screenshot
         auth.master_key = b"dummy_key_for_snap" 
         
-        vault_win = VaultWindow(auth)
+        vault_win = VaultWindow(auth, db)
         
         # Add some mock items for the list
         mock_accounts = [
