@@ -31,7 +31,7 @@ VaultPy prioritizes security through modern cryptographic standards:
 - Python 3.11 or higher
 
 ### Developer Setup
-1. Clone the repository: `git clone https://github.com/yourusername/vaultpy.git`
+1. Clone the repository: `git clone https://github.com/MustafaMahmoud-ILE/vaultpy.git`
 2. Install dependencies: `pip install -r requirements.txt`
 3. Run: `python main.py`
 
