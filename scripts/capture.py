@@ -1,19 +1,24 @@
 import sys
 import os
+
+# Add parent directory to sys.path so it can find project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from PySide6.QtWidgets import QApplication
 from ui.login_window import LoginWindow
-from core.auth import AuthManager
-from core.database import DatabaseManager
-
 from ui.vault_window import VaultWindow
 from models.account import Account
+from core.auth import AuthManager
+from core.database import DatabaseManager
 
 def capture_screenshot():
     """Launches the app, captures screenshots, and exits."""
     app = QApplication(sys.argv)
     
-    # Initialize Core
-    db = DatabaseManager()
+    # Initialize Core (Assume DB is in project root)
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    db_path = os.path.join(project_root, "data", "vault.db")
+    db = DatabaseManager(db_path)
     auth = AuthManager(db)
     
     # 1. Capture Login Screenshot
@@ -21,8 +26,9 @@ def capture_screenshot():
     login_win.show()
     QApplication.processEvents()
     
-    # Create assets directory
-    os.makedirs('assets', exist_ok=True)
+    # Create assets directory in project root
+    assets_dir = os.path.join(project_root, 'assets')
+    os.makedirs(assets_dir, exist_ok=True)
     
     from PySide6.QtCore import QTimer
     
@@ -31,9 +37,9 @@ def capture_screenshot():
         login_win.hide()
         
         # 2. Capture Vault Screenshot (with Mock Data)
-        # We manually inject a fake key to bypass auth for screenshot
         auth.master_key = b"dummy_key_for_snap" 
         
+        # Pass db to VaultWindow
         vault_win = VaultWindow(auth, db)
         
         # Add some mock items for the list
@@ -56,7 +62,7 @@ def capture_screenshot():
         
         def finalize():
             screenshot = vault_win.grab()
-            screenshot.save("assets/vault_preview.png")
+            screenshot.save(os.path.join(assets_dir, "vault_preview.png"))
             print("Success: Captured vault_preview.png in assets folder!")
             app.quit()
             
@@ -64,7 +70,7 @@ def capture_screenshot():
 
     def step_1_capture_login():
         screenshot = login_win.grab()
-        screenshot.save("assets/login_preview.png")
+        screenshot.save(os.path.join(assets_dir, "login_preview.png"))
         print("Success: Captured login_preview.png")
         QTimer.singleShot(100, step_2_capture_vault)
         

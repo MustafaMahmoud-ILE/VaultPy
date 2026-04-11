@@ -73,14 +73,13 @@ python main.py
 ### Building for Production (EXE)
 To generate a standalone Windows executable:
 1. Ensure `pyinstaller` is installed: `pip install pyinstaller`
-2. Run the build automation: `python build.py`
+2. Run the build automation: `python scripts/build.py`
 3. Find your app in `dist/VaultPy/VaultPy.exe`.
 
-## 🧪 Testing
-We maintain a suite of core logic tests. Run them using:
-```bash
-python -m unittest discover tests
-```
+## 📷 Developer Tools
+We provide automated scripts for maintenance:
+- **Take Screenshots**: `python scripts/capture.py` (Perfect for README updates)
+- **Deep Cleanup**: `python scripts/cleanup.py` (Removes build/test artifacts)
 
 ## 📜 License
 Distributed under the MIT License. See `LICENSE` for more information.
