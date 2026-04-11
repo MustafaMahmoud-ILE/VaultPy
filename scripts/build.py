@@ -26,16 +26,24 @@ def build_app():
         '--noconsole',        # Hidden console window
         '--windowed',         # GUI application
         '--clean',            # Clean cache
+        '--noconfirm',        # Overwrite output directory without asking
         '--exclude-module=PyQt5', # Avoid conflicts with other Qt versions
         f'--icon={icon_path}',
-        f'--add-data={assets_dir}{os.pathsep}assets', # Include assets folder
     ]
 
     # Run PyInstaller
     PyInstaller.__main__.run(args)
 
+    # Post-Build Step: Copy assets directly next to EXE
+    output_dir = os.path.join(project_root, 'dist', 'VaultPy')
+    dest_assets = os.path.join(output_dir, 'assets')
+    if os.path.exists(dest_assets):
+        shutil.rmtree(dest_assets)
+    shutil.copytree(assets_dir, dest_assets)
+    print("Assets successfully bundled next to the executable.")
+
     print("\nBuild Completed!")
-    print(f"Output location: {os.path.join(project_root, 'dist', 'VaultPy')}")
+    print(f"Output location: {output_dir}")
     print("Note: The 'dist/VaultPy' folder now contains VaultPy.exe and all required files.")
 
 if __name__ == "__main__":

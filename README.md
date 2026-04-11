@@ -46,12 +46,14 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 
 ---
 
-## ✨ Key Features
+## ✨ Key Features (v1.1.0)
 
+- **Seamless Self-Updates**: Built-in background auto-updater instantly modernizes your app to the latest GitHub release.
+- **Persistent Data Safety**: Vaults are securely stored in `%APPDATA%`, saving your passwords safely across app updates.
 - **Pro-Grade UI/UX**: Frameless window architecture with custom title bar, rounded corners, and smooth fade-in animations.
 - **Master Password Protection**: Highly secure authentication via **Argon2id** hashing.
 - **Strong Encryption**: All secrets (passwords, notes, TOTP) are protected by **AES-256-GCM** authenticated encryption.
-- **2FA Support (TOTP)**: Built-in generator with live countdown and high-visibility indicators.
+- **2FA Support (TOTP)**: Built-in generator with live countdown, format sanitization, and high-visibility indicators.
 - **Smart Analytics**: Real-time **Auto-lock** countdown timer that monitors user activity.
 - **Security Hardening**:
     *   **Single Instance Lock**: Prevents database corruption.

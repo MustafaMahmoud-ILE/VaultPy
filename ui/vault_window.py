@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, 
     QPushButton, QLabel, QListWidget, QListWidgetItem, QFrame, 
     QSplitter, QScrollArea, QMessageBox, QSpacerItem, QSizePolicy,
-    QGraphicsOpacityEffect, QGraphicsDropShadowEffect
+    QGraphicsOpacityEffect, QGraphicsDropShadowEffect, QProgressBar
 )
 from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve, QPoint
 from PySide6.QtGui import QIcon, QFont, QPixmap, QColor
@@ -19,6 +19,8 @@ class VaultWindow(QWidget):
     """Main application window displaying the password vault (Frameless)."""
     
     lock_requested = Signal()
+    update_check_requested = Signal()
+    install_update_requested = Signal(str) # url
 
     def __init__(self, auth_manager: AuthManager, db_manager: DatabaseManager, idle_filter=None):
         super().__init__()
@@ -264,10 +266,77 @@ class VaultWindow(QWidget):
         lock_btn.setStyleSheet("color: #f38ba8; font-weight: bold; background: transparent; border: none;")
         lock_btn.setCursor(Qt.PointingHandCursor)
         lock_btn.clicked.connect(self.lock_requested.emit)
-        status_layout.addWidget(lock_btn)
+        # Check for Updates Button
+        status_layout.addSpacing(15)
+        self.update_btn = QPushButton("🔄 Check for Updates")
+        self.update_btn.setStyleSheet("color: #89b4fa; font-size: 11px; background: transparent; border: none;")
+        self.update_btn.setCursor(Qt.PointingHandCursor)
+        self.update_btn.clicked.connect(self.request_update_check)
+        status_layout.addWidget(self.update_btn)
+        
+        # Download Progress (Hidden by default)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setFixedHeight(10)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #1e1e2e;
+                border-radius: 5px;
+                text-align: center;
+                color: transparent;
+                border: none;
+            }
+            QProgressBar::chunk {
+                background-color: #a6e3a1;
+                border-radius: 5px;
+            }
+        """)
+        status_layout.addWidget(self.progress_bar)
         
         self.container_layout.addWidget(self.status_widget)
         self.layout.addWidget(self.container)
+
+    def request_update_check(self):
+        self.update_btn.setText("⏳ Checking...")
+        self.update_btn.setEnabled(False)
+        self.update_check_requested.emit()
+        # Reset text after a timeout if no signal comes back
+        QTimer.singleShot(10000, lambda: self.update_btn.setText("🔄 Check for Updates"))
+        QTimer.singleShot(10000, lambda: self.update_btn.setEnabled(True))
+
+    def show_update_available(self, version, url, notes):
+        """Shows an update notification dialog with a download option."""
+        self.update_btn.setText("✨ Update Available!")
+        self.update_btn.setStyleSheet("color: #a6e3a1; font-weight: bold; background: transparent; border: none;")
+        self.update_btn.setEnabled(True)
+        
+        msg = QMessageBox(self)
+        msg.setWindowTitle("VaultPy Update")
+        msg.setText(f"A new version ({version}) is available!")
+        msg.setInformativeText("Would you like to download and install it automatically?")
+        msg.setDetailedText(notes)
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg.setDefaultButton(QMessageBox.Yes)
+        msg.setStyleSheet("QLabel{ color: #cdd6f4; } QMessageBox{ background-color: #11111b; }")
+        
+        if msg.exec() == QMessageBox.Yes:
+            self.update_btn.setVisible(False)
+            self.progress_bar.setVisible(True)
+            self.status_label.setText("⏬ Downloading Update...")
+            self.install_update_requested.emit(url)
+
+    def update_download_progress(self, percent):
+        if percent == -1:
+            # Unknown size, set to Marquee (pulse) mode
+            self.progress_bar.setRange(0, 0)
+        else:
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(percent)
+            
+        if percent >= 100:
+            self.progress_bar.setRange(0, 100) # Reset to normal
+            self.progress_bar.setValue(100)
+            self.status_label.setText("📦 Preparing Installation...")
 
     def update_idle_label(self, seconds):
         self.idle_label.setText(f"Auto-locks in {seconds}s")

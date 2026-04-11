@@ -7,8 +7,12 @@ class TOTPManager:
     @staticmethod
     def get_otp(secret: str) -> str:
         """Generates a 6-digit TOTP code from a secret."""
+        if not secret:
+            return ""
         try:
-            totp = pyotp.TOTP(secret)
+            # Sanitize: Remove spaces, dashes, and ensure uppercase
+            clean_secret = str(secret).replace(" ", "").replace("-", "").upper()
+            totp = pyotp.TOTP(clean_secret)
             return totp.now()
         except Exception:
             return "ERROR"

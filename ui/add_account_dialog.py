@@ -274,10 +274,15 @@ class AddAccountDialog(QDialog):
         self.strength_label.setText(f"Strength: {text}")
 
     def get_data(self):
+        """Returns the form data, with sanitized TOTP secret."""
+        # Sanitize TOTP: Remove spaces/dashes and uppercase
+        totp_raw = self.totp_input.text()
+        totp_clean = totp_raw.replace(" ", "").replace("-", "").upper() if totp_raw else ""
+        
         return {
             "service": self.service_input.text(),
             "username": self.username_input.text(),
             "password": self.password_input.text(),
-            "totp": self.totp_input.text(),
+            "totp": totp_clean,
             "notes": self.notes_input.toPlainText()
         }

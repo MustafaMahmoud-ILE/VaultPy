@@ -5,7 +5,16 @@ from datetime import datetime
 class DatabaseManager:
     """Handles all database interactions for VaultPy."""
 
-    def __init__(self, db_path="data/vault.db"):
+    def __init__(self, db_path=None):
+        if db_path is None:
+            # Default to User AppData for persistence across updates
+            app_data = os.getenv('APPDATA')
+            if app_data:
+                db_path = os.path.join(app_data, "VaultPy", "vault.db")
+            else:
+                # Fallback for non-Windows or if APPDATA is missing
+                db_path = os.path.join(os.path.expanduser("~"), ".vaultpy", "vault.db")
+
         # Ensure data directory exists
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db_path = db_path
