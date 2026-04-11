@@ -1,0 +1,242 @@
+import os
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, 
+    QLabel, QFrame, QMessageBox, QGraphicsOpacityEffect, QGraphicsDropShadowEffect
+)
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QPoint
+from PySide6.QtGui import QPixmap, QIcon, QColor
+from core.auth import AuthManager
+from ui.components.title_bar import CustomTitleBar
+
+class LoginWindow(QWidget):
+    """Window for master password setup and login (Frameless)."""
+    
+    login_success = Signal()
+
+    def __init__(self, auth_manager: AuthManager):
+        super().__init__()
+        self.auth = auth_manager
+        
+        # Frameless & Translucent State
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedSize(450, 650)
+        
+        self.init_ui()
+        self.apply_fade_in()
+
+    def init_ui(self):
+        # Global Style
+        self.setStyleSheet("""
+            QWidget {
+                font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            }
+            QFrame#MainContainer {
+                background-color: #0b0b10;
+                border-radius: 15px;
+                border: 2px solid #45475a;
+            }
+            QFrame#LoginCard {
+                background-color: #11111b;
+                border-radius: 20px;
+                border: 1px solid #45475a;
+            }
+            QLabel#Subtitle {
+                font-size: 14px;
+                color: #bac2de;
+                margin-bottom: 20px;
+            }
+            QLineEdit {
+                background-color: #181825;
+                border: 1.5px solid #45475a;
+                border-radius: 10px;
+                padding: 15px;
+                font-size: 15px;
+                color: #ffffff;
+            }
+            QLineEdit:focus {
+                border: 1.5px solid #89b4fa;
+            }
+            QPushButton#PrimaryAction {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #89b4fa, stop:1 #cba6f7);
+                color: #000000;
+                border-radius: 10px;
+                padding: 15px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton#PrimaryAction:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #b4befe, stop:1 #f5c2e7);
+            }
+        """)
+
+        # Main Layout (containing the rounded container)
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(10, 10, 10, 10) # Space for shadow
+
+        self.container = QFrame()
+        self.container.setObjectName("MainContainer")
+        self.container_layout = QVBoxLayout(self.container)
+        self.container_layout.setContentsMargins(0, 0, 0, 0)
+        self.container_layout.setSpacing(0)
+
+        # 1. Custom Title Bar
+        self.title_bar = CustomTitleBar(self, "VaultPy - Secure Access")
+        self.title_bar.close_clicked.connect(self.close)
+        self.title_bar.minimize_clicked.connect(self.showMinimized)
+        self.container_layout.addWidget(self.title_bar)
+
+        # 2. Content Section
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.content_layout.setContentsMargins(30, 10, 30, 40)
+        self.content_layout.setAlignment(Qt.AlignCenter)
+
+        # Container Card
+        self.card = QFrame()
+        self.card.setObjectName("LoginCard")
+        self.card_layout = QVBoxLayout(self.card)
+        self.card_layout.setContentsMargins(40, 40, 40, 40)
+        self.card_layout.setSpacing(15)
+
+        # Logo Section (Text-only for cleaner look)
+        self.logo_label = QLabel("VaultPy")
+        self.logo_label.setAlignment(Qt.AlignCenter)
+        self.logo_label.setStyleSheet("""
+            font-size: 42px; 
+            font-weight: 800; 
+            color: #89b4fa;
+            margin-bottom: 5px;
+            letter-spacing: 2px;
+        """)
+        self.card_layout.addWidget(self.logo_label)
+
+        self.subtitle_label = QLabel()
+        self.subtitle_label.setObjectName("Subtitle")
+        self.subtitle_label.setAlignment(Qt.AlignCenter)
+        self.subtitle_label.setWordWrap(True)
+        self.card_layout.addWidget(self.subtitle_label)
+
+        # Inputs
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("Master Password")
+        self.password_input.setEchoMode(QLineEdit.Password)
+        self.password_input.returnPressed.connect(self.handle_action)
+        self.card_layout.addWidget(self.password_input)
+
+        self.confirm_password_input = QLineEdit()
+        self.confirm_password_input.setPlaceholderText("Confirm Master Password")
+        self.confirm_password_input.setEchoMode(QLineEdit.Password)
+        self.confirm_password_input.setVisible(False)
+        self.card_layout.addWidget(self.confirm_password_input)
+
+        self.card_layout.addSpacing(10)
+
+        # Setup Warning (Initially hidden)
+        self.setup_warning = QLabel("⚠ Secure Choice: This password CANNOT be recovered. If lost, all data will be permanently inaccessible.")
+        self.setup_warning.setObjectName("SetupWarning")
+        self.setup_warning.setWordWrap(True)
+        self.setup_warning.setAlignment(Qt.AlignCenter)
+        self.setup_warning.setStyleSheet("color: #fab387; font-size: 12px; font-weight: bold; margin-bottom: 5px;")
+        self.setup_warning.setVisible(False)
+        self.card_layout.addWidget(self.setup_warning)
+
+        # Action Button
+        self.action_button = QPushButton("Unlock Vault")
+        self.action_button.setObjectName("PrimaryAction")
+        self.action_button.setCursor(Qt.PointingHandCursor)
+        self.action_button.clicked.connect(self.handle_action)
+        self.card_layout.addWidget(self.action_button)
+
+        # Forgot Password Button (Initially hidden)
+        self.reset_btn = QPushButton("Forgot password? Reset Vault")
+        self.reset_btn.setObjectName("ResetLink")
+        self.reset_btn.setStyleSheet("color: #585b70; text-decoration: underline; background: transparent; border: none; font-size: 12px; margin-top: 10px;")
+        self.reset_btn.setCursor(Qt.PointingHandCursor)
+        self.reset_btn.clicked.connect(self.handle_reset)
+        self.reset_btn.setVisible(False)
+        self.card_layout.addWidget(self.reset_btn)
+
+        self.content_layout.addWidget(self.card)
+        self.container_layout.addWidget(self.content_widget)
+
+        # Add Shadow Effect
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setXOffset(0)
+        shadow.setYOffset(5)
+        shadow.setColor(QColor(0, 0, 0, 150))
+        self.container.setGraphicsEffect(shadow)
+
+        self.layout.addWidget(self.container)
+
+        # Determine mode
+        if self.auth.is_setup_required():
+            self.set_setup_mode()
+        else:
+            self.set_login_mode()
+
+    def set_setup_mode(self):
+        self.is_setup = True
+        self.subtitle_label.setText("Create your master password to initialize your personal vault.")
+        self.action_button.setText("Initialize Vault")
+        self.confirm_password_input.setVisible(True)
+        self.setup_warning.setVisible(True)
+        self.reset_btn.setVisible(False)
+
+    def set_login_mode(self):
+        self.is_setup = False
+        self.subtitle_label.setText("Enter password to decrypt your secure repository.")
+        self.action_button.setText("Unlock Vault")
+        self.confirm_password_input.setVisible(False)
+        self.setup_warning.setVisible(False)
+        self.reset_btn.setVisible(True)
+
+    def handle_reset(self):
+        msg = "Are you sure you want to RESET your vault?\n\nThis will PERMANENTLY DELETE all accounts and passwords. This action is IRREVERSIBLE."
+        reply = QMessageBox.question(self, "Factory Reset", msg, QMessageBox.Yes | QMessageBox.No)
+        
+        if reply == QMessageBox.Yes:
+            # Final text confirmation
+            from PySide6.QtWidgets import QInputDialog
+            text, ok = QInputDialog.getText(self, "Security Confirmation", "To confirm data deletion, please type 'RESET' in uppercase:")
+            
+            if ok and text == "RESET":
+                self.auth.db.factory_reset()
+                QMessageBox.information(self, "Success", "Vault wiped successfully. You can now set up a new master password.")
+                self.set_setup_mode()
+                self.password_input.clear()
+                self.confirm_password_input.clear()
+            elif ok:
+                QMessageBox.critical(self, "Error", "Invalid confirmation code. Reset cancelled.")
+
+    def apply_fade_in(self):
+        self.opacity_effect = QGraphicsOpacityEffect(self)
+        self.container.setGraphicsEffect(self.opacity_effect)
+        self.animation = QPropertyAnimation(self.opacity_effect, b"opacity")
+        self.animation.setDuration(600)
+        self.animation.setStartValue(0)
+        self.animation.setEndValue(1)
+        self.animation.setEasingCurve(QEasingCurve.InOutQuad)
+        self.animation.start()
+
+    def handle_action(self):
+        password = self.password_input.text()
+        
+        if self.is_setup:
+            confirm = self.confirm_password_input.text()
+            if len(password) < 12:
+                QMessageBox.warning(self, "Security Requirement", "Master password must be at least 12 characters long.")
+                return
+            if password != confirm:
+                QMessageBox.warning(self, "Error", "Passwords do not match.")
+                return
+            
+            if self.auth.setup_vault(password):
+                self.login_success.emit()
+        else:
+            if self.auth.unlock_vault(password):
+                self.login_success.emit()
+            else:
+                QMessageBox.warning(self, "Error", "Invalid Master Password.")
+                self.password_input.clear()
