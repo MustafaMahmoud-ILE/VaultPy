@@ -31,6 +31,7 @@ class VaultWindow(QWidget):
         self.idle_filter = idle_filter
         self.selected_account = None
         self.totp_val_label = None
+        self.active_dialog = None
         
         # Frameless & Translucent State
         self.setWindowFlags(Qt.FramelessWindowHint)
@@ -356,6 +357,15 @@ class VaultWindow(QWidget):
         else:
             self.idle_label.setStyleSheet("color: #fab387; font-family: 'Consolas', monospace; font-size: 13px; margin-right: 15px;")
 
+    def closeEvent(self, event):
+        """Ensures all modal children are dismissed when the vault locks."""
+        if self.active_dialog:
+            try:
+                self.active_dialog.reject()
+            except Exception:
+                pass
+        event.accept()
+
     def apply_fade_in(self):
         self.opacity_effect = QGraphicsOpacityEffect(self)
         self.container.setGraphicsEffect(self.opacity_effect)
@@ -489,19 +499,21 @@ class VaultWindow(QWidget):
         except Exception: pass
 
     def show_add_dialog(self):
-        dialog = AddAccountDialog(self)
-        if dialog.exec():
-            data = dialog.get_data()
+        self.active_dialog = AddAccountDialog(self)
+        if self.active_dialog.exec():
+            data = self.active_dialog.get_data()
             try:
                 key = self.auth.get_key()
                 self.db.add_account(data['service'], data['username'], CryptoManager.encrypt(data['password'], key), CryptoManager.encrypt(data['totp'], key) if data['totp'] else None, CryptoManager.encrypt(data['notes'], key) if data['notes'] else None)
                 self.refresh_accounts()
             except Exception as e: QMessageBox.critical(self, "Error", f"Failed to save account: {e}")
+        self.active_dialog = None
 
     def show_edit_dialog(self, acc):
         try:
             key = self.auth.get_key()
-            dialog = AddAccountDialog(self, account_data=acc)
+            self.active_dialog = AddAccountDialog(self, account_data=acc)
+            dialog = self.active_dialog
             dialog.service_input.setText(acc.service)
             dialog.username_input.setText(acc.username)
             dialog.password_input.setText(CryptoManager.decrypt(acc.password_encrypted, key))
@@ -513,6 +525,7 @@ class VaultWindow(QWidget):
                 self.refresh_accounts()
                 self.on_account_selected()
         except Exception as e: QMessageBox.critical(self, "Error", f"Failed to edit account: {e}")
+        self.active_dialog = None
 
     def delete_account(self, acc_id):
         if QMessageBox.question(self, "Confirm Delete", "Are you sure you want to delete this account?", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:

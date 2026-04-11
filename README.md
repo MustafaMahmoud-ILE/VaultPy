@@ -46,11 +46,12 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 
 ---
 
-## ✨ Key Features (v1.2.2)
+## ✨ Key Features (v1.2.3)
 
 - **📱 TOTP-Based Recovery**: Introduced a **mandatory phone-based backup**. Reset your Master Password using a 6-digit code from any Authenticator app (Google, Authy, etc.).
 - **🔐 Triple-Wrap Architecture**: Your Data Encryption Key (DEK) is now wrapped by **three independent providers**: Password, 24-word Phrase, and TOTP Secret.
-- **🛡️ Security Lockout**: Automatically locks the vault after **5 consecutive failed attempts**. The lockout is persistent and requires recovery via Phrase or OTP to reset access.
+- **🛡️ Security Hardening**: Automatically locks the vault after **5 consecutive failed attempts**.
+- **🛡️ Orphaned Window Protection**: All modal dialogs (New Account, Edit) are now forcibly closed on session timeout to prevent unauthorized access.
 - **🛡️ Disaster Resiliency**: BIP39-style 24-word recovery seeds and phone-based recovery ensure you never lose access to your digital life.
 - **💾 Portable Backups**: Export your entire vault as a standalone, encrypted **.pyvault** file for manual off-site storage.
 - **🔄 Seamless Migration**: Automated upgrade path for existing users to the new Triple-Wrap model upon login.
@@ -58,7 +59,7 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 - **2FA Support (TOTP)**: Built-in generator with live countdown and high-visibility indicators.
 - **Strong Encryption**: All secrets are protected by **AES-256-GCM** authenticated encryption.
 
-## 🛡️ Security Architecture (v1.2.2)
+## 🛡️ Security Architecture (v1.2.3)
 
 VaultPy employs a "Wrapped Key" model to ensure maximum security and recovery flexibility:
 
