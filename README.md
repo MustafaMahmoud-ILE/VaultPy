@@ -15,14 +15,24 @@ VaultPy is a professional-grade, local-first password manager built with Python 
 
 ---
 
-## 📷 Showcase
+## 📷 Visual Journey
 
-> [!TIP]
-> **Visual Tour**: Add your application screenshots here to showcase the beautiful UI!
+VaultPy is designed with a premium, frameless aesthetic. Explore the interface below:
+
+### 🏙️ Secure Access (Login)
+*The first line of defense. A minimalist, high-contrast entry point that welcomes you to your vault.*
 
 <p align="center">
-  <img src="assets/login_preview.png" width="45%" alt="Login Screen Placeholder">
-  <img src="assets/vault_preview.png" width="45%" alt="Vault Screen Placeholder">
+  <img src="assets/login_preview.png" width="80%" alt="Login Screen">
+</p>
+
+---
+
+### 🗃️ Vault Management (Main View)
+*Your secure repository. Clean organization with real-time TOTP generation and searchable accounts.*
+
+<p align="center">
+  <img src="assets/vault_preview.png" width="90%" alt="Vault Screen">
 </p>
 
 ---
