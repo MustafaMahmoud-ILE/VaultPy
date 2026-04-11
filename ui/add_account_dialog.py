@@ -64,6 +64,19 @@ class AddAccountDialog(QDialog):
             QPushButton#Secondary:hover {
                 background-color: #45475a;
             }
+            QPushButton#Tertiary {
+                background-color: transparent;
+                border: 1px solid #45475a;
+                color: #89b4fa;
+                border-radius: 6px;
+                padding: 6px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton#Tertiary:hover {
+                background-color: #313244;
+                border-color: #89b4fa;
+            }
             QGroupBox {
                 border: 1px solid #313244;
                 border-radius: 10px;
@@ -112,6 +125,7 @@ class AddAccountDialog(QDialog):
         pass_layout.addWidget(self.password_input)
         
         self.gen_toggle_btn = QPushButton("✨ Generate")
+        self.gen_toggle_btn.setObjectName("Tertiary")
         self.gen_toggle_btn.setFixedWidth(100)
         self.gen_toggle_btn.setCursor(Qt.PointingHandCursor)
         self.gen_toggle_btn.clicked.connect(self.show_generator_options)
