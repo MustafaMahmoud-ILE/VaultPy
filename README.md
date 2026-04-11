@@ -1,6 +1,10 @@
 # VaultPy 🔐
 
 <p align="center">
+  <img src="assets/hero.png" width="100%" alt="VaultPy Hero Image">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python Version">
   <img src="https://img.shields.io/badge/UI-PySide6-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="UI Framework">
   <img src="https://img.shields.io/badge/License-MIT-F5D76E?style=for-the-badge" alt="License">
