@@ -1,5 +1,6 @@
 import os
 import pyotp
+import ctypes
 from core.crypto import CryptoManager
 from core.database import DatabaseManager
 
@@ -32,8 +33,32 @@ class AuthManager:
         return False
 
     def is_locked_out(self) -> bool:
-        """Checks if the account is locked after 5 failed attempts."""
-        return self.db.get_failed_attempts() >= 5
+        """Checks if the account is locked after 5 failed attempts (Secure Dual-Check)."""
+        db_count = self.db.get_failed_attempts()
+        reg_state = self.db.get_registry_state()
+        reg_count = reg_state.get("AuditCount", 0)
+        reg_mtime = reg_state.get("LastMTime", 0.0)
+        
+        current_mtime = os.path.getmtime(self.db.db_path)
+        
+        # 1. Detection of 'Time Travel' (Database rollback)
+        # If the file on disk is older than our last recorded modification, it was swapped.
+        # We allow a small 2-second grace for precision issues.
+        if reg_mtime > 0 and (current_mtime + 2.0) < reg_mtime:
+             # TRIGGER PERMANENT LOCK on tampering
+             return True
+
+        # 2. Detection of Count Rollback (Registry shadow check)
+        if reg_count > db_count and reg_count < 999: # 999 is local lockout signal
+             # Force DB to catch up to Registry state
+             with self.db._get_connection() as conn:
+                 cursor = conn.cursor()
+                 cursor.execute("UPDATE meta SET failed_attempts = ? WHERE id = (SELECT id FROM meta LIMIT 1)", (reg_count,))
+                 self.db._update_integrity_signature(cursor)
+                 conn.commit()
+             db_count = reg_count
+
+        return max(db_count, reg_count) >= 5
 
     def setup_vault(self, master_password: str) -> bool:
         """
@@ -75,12 +100,12 @@ class AuthManager:
         t_secret_obf = self._obfuscate_secret(totp_secret)
         
         self.db.save_setup(p_hash, p_salt, p_wrapped, r_wrapped, r_salt, t_secret_obf, t_wrapped)
-        self.master_key = dek
+        self.master_key = bytearray(dek)
         return True
 
     def _obfuscate_secret(self, secret: str) -> str:
-        """Simple XOR obfuscation to hide the secret from direct grep."""
-        key = "VaultPy_Security_v1.2.1"
+        """Hardware-linked XOR obfuscation to bind recovery data to this machine."""
+        key = CryptoManager.get_hardware_id() + "_VaultPy_Security_v1.2.4"
         return "".join(chr(ord(c) ^ ord(key[i % len(key)])) for i, c in enumerate(secret))
 
     def _deobfuscate_secret(self, obf: str) -> str:
@@ -127,7 +152,7 @@ class AuthManager:
         t_secret_obf = self._obfuscate_secret(totp_secret)
         self.db.reset_vault_auth(p_hash, p_salt, p_wrapped, r_wrapped, r_salt, t_secret_obf, t_wrapped)
         
-        self.master_key = dek
+        self.master_key = bytearray(dek)
         return phrase, self.get_totp_uri(), totp_secret
 
     def unlock_vault(self, master_password: str) -> bool:
@@ -144,7 +169,7 @@ class AuthManager:
             p_kek = CryptoManager.derive_key(master_password, p_salt)
             try:
                 dek_hex = CryptoManager.decrypt(p_wrapped, p_kek)
-                self.master_key = bytes.fromhex(dek_hex)
+                self.master_key = bytearray(bytes.fromhex(dek_hex))
                 self.db.reset_failed_attempts()
                 return True
             except Exception:
@@ -165,7 +190,7 @@ class AuthManager:
         try:
             r_kek = CryptoManager.derive_key_from_phrase(phrase, r_salt)
             dek_hex = CryptoManager.decrypt(r_wrapped, r_kek)
-            self.master_key = bytes.fromhex(dek_hex)
+            self.master_key = bytearray(bytes.fromhex(dek_hex))
             return True
         except Exception:
             return False
@@ -189,7 +214,7 @@ class AuthManager:
             # 2. Derive KEK from secret and unwrap DEK
             t_kek = CryptoManager.derive_key(totp_secret, p_salt)
             dek_hex = CryptoManager.decrypt(t_wrapped, t_kek)
-            self.master_key = bytes.fromhex(dek_hex)
+            self.master_key = bytearray(bytes.fromhex(dek_hex))
             return True
         except Exception:
             return False
@@ -246,7 +271,22 @@ class AuthManager:
             return False
 
     def lock_vault(self):
+        """Securely wipes the master key from memory before locking."""
+        if self.master_key:
+            self._scrub_memory(self.master_key)
         self.master_key = None
+
+    def _scrub_memory(self, buffer):
+        """Hard-wipes a bytearray by filling it with zeros using C-level access."""
+        try:
+            # Get the pointer to the buffer and its size
+            size = len(buffer)
+            addr = (ctypes.c_char * size).from_buffer(buffer)
+            ctypes.memset(addr, 0, size)
+        except Exception:
+            # Fallback for immutable-like behavior (less secure but non-crashing)
+            for i in range(len(buffer)):
+                buffer[i] = 0
 
     def is_unlocked(self) -> bool:
         return self.master_key is not None

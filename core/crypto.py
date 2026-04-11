@@ -1,7 +1,15 @@
 import os
+import hmac
+import hashlib
+import winreg
+import ctypes
+from ctypes import wintypes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from argon2 import PasswordHasher, Type
 from argon2.low_level import hash_secret_raw
+
+class DATA_BLOB(ctypes.Structure):
+    _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
 
 class CryptoManager:
     """Handles encryption, decryption, and key derivation."""
@@ -107,3 +115,71 @@ class CryptoManager:
             return True
         except Exception:
             return False
+
+    @staticmethod
+    def get_hardware_id() -> str:
+        """Retrieves the unique Windows MachineGuid for hardware binding."""
+        try:
+            registry_key = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE, 
+                r"SOFTWARE\Microsoft\Cryptography", 
+                0, 
+                winreg.KEY_READ | winreg.KEY_WOW64_64KEY
+            )
+            value, _ = winreg.QueryValueEx(registry_key, "MachineGuid")
+            winreg.CloseKey(registry_key)
+            return str(value)
+        except Exception:
+            # Fallback to a stable ID if registry access fails
+            return "VaultPy_Default_HWID_7788"
+
+    @staticmethod
+    def get_hmac_signature(data: str, key: str) -> bytes:
+        """Generates an HMAC-SHA256 signature for data integrity."""
+        return hmac.new(key.encode(), data.encode(), hashlib.sha256).digest()
+
+    @staticmethod
+    def verify_hmac_signature(data: str, signature: bytes, key: str) -> bool:
+        """Verifies an HMAC-SHA256 signature."""
+        expected = CryptoManager.get_hmac_signature(data, key)
+        return hmac.compare_digest(expected, signature)
+
+    @staticmethod
+    def encrypt_dpapi(data: bytes, entropy: bytes = None) -> bytes:
+        """Encrypts data using Windows DPAPI with optional secondary entropy."""
+        data_in = DATA_BLOB(len(data), ctypes.create_string_buffer(data))
+        data_out = DATA_BLOB()
+        
+        ent_blob = None
+        if entropy:
+            ent_blob = DATA_BLOB(len(entropy), ctypes.create_string_buffer(entropy))
+        
+        if ctypes.windll.crypt32.CryptProtectData(
+            ctypes.byref(data_in), None, 
+            ctypes.byref(ent_blob) if ent_blob else None, 
+            None, None, 0, ctypes.byref(data_out)
+        ):
+            res = ctypes.string_at(data_out.pbData, data_out.cbData)
+            ctypes.windll.kernel32.LocalFree(data_out.pbData)
+            return res
+        return b""
+
+    @staticmethod
+    def decrypt_dpapi(data: bytes, entropy: bytes = None) -> bytes:
+        """Decrypts data using Windows DPAPI with the same secondary entropy used during encryption."""
+        data_in = DATA_BLOB(len(data), ctypes.create_string_buffer(data))
+        data_out = DATA_BLOB()
+        
+        ent_blob = None
+        if entropy:
+            ent_blob = DATA_BLOB(len(entropy), ctypes.create_string_buffer(entropy))
+            
+        if ctypes.windll.crypt32.CryptUnprotectData(
+            ctypes.byref(data_in), None, 
+            ctypes.byref(ent_blob) if ent_blob else None, 
+            None, None, 0, ctypes.byref(data_out)
+        ):
+            res = ctypes.string_at(data_out.pbData, data_out.cbData)
+            ctypes.windll.kernel32.LocalFree(data_out.pbData)
+            return res
+        return b""
