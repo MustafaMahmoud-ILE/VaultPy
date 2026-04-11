@@ -46,18 +46,18 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 
 ---
 
-## ✨ Key Features (v1.2.0)
+## ✨ Key Features (v1.2.1)
 
-- **🛡️ Disaster Recovery**: Introduced a **24-word Recovery Seed Phrase** (BIP39 style). Regain access even if you lose your Master Password.
-- **🔐 Wrapped Key Architecture**: Migration to a pro-grade security model using a random **Data Encryption Key (DEK)** wrapped by both password and recovery phrase.
+- **📱 TOTP-Based Recovery**: Introduced a **mandatory phone-based backup**. Reset your Master Password using a 6-digit code from any Authenticator app (Google, Authy, etc.).
+- **🔐 Triple-Wrap Architecture**: Your Data Encryption Key (DEK) is now wrapped by **three independent providers**: Password, 24-word Phrase, and TOTP Secret.
+- **🛡️ Disaster Resiliency**: BIP39-style 24-word recovery seeds and phone-based recovery ensure you never lose access to your digital life.
 - **💾 Portable Backups**: Export your entire vault as a standalone, encrypted **.pyvault** file for manual off-site storage.
-- **🔄 Seamless Migration**: Automated upgrade path for v1.1.0 users to the new security model upon first login.
+- **🔄 Seamless Migration**: Automated upgrade path for existing users to the new Triple-Wrap model upon login.
 - **📅 Pro UI/UX**: Professional frameless window architecture with custom title bar, rounded corners, and high-contrast visuals.
-- **2FA Support (TOTP)**: Built-in generator with live countdown, format sanitization, and high-visibility indicators.
+- **2FA Support (TOTP)**: Built-in generator with live countdown and high-visibility indicators.
 - **Strong Encryption**: All secrets are protected by **AES-256-GCM** authenticated encryption.
-- **Auto-lock Intelligence**: Real-time activity monitoring with customizable auto-lock timer.
 
-## 🛡️ Security Architecture (v1.2.0)
+## 🛡️ Security Architecture (v1.2.1)
 
 VaultPy employs a "Wrapped Key" model to ensure maximum security and recovery flexibility:
 

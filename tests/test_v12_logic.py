@@ -98,14 +98,13 @@ class TestV12Logic(unittest.TestCase):
         self.assertEqual(self.auth.get_key(), original_dek)
 
     def test_migration_from_v11(self):
-        """Test that a v1.1.0 database can be upgraded to v1.2.0."""
+        """Test that a v1.1.0 database can be upgraded to v1.2.1 Triple-Wrap."""
         password = "LegacyPassword123"
         
         # 1. Simulate a v1.1.0 DB state (direct password derivation)
         p_hash, p_salt = CryptoManager.hash_password(password)
         with self.db._get_connection() as conn:
             cursor = conn.cursor()
-            # Old manual insert before we had wrapped key columns
             cursor.execute(
                 "INSERT INTO meta (password_hash, salt) VALUES (?, ?)",
                 (p_hash, p_salt)
@@ -115,9 +114,11 @@ class TestV12Logic(unittest.TestCase):
         self.assertTrue(self.auth.needs_migration())
 
         # 3. Perform Migration
-        phrase = self.auth.migrate_to_wrapped_keys(password)
+        phrase, uri, secret = self.auth.migrate_to_wrapped_keys(password)
         self.assertIsNotNone(phrase)
         self.assertEqual(len(phrase.split(" ")), 24)
+        self.assertTrue(uri.startswith("otpauth://totp/"))
+        self.assertEqual(len(secret), 32) # Base32 secret length
 
         # 4. Verify migrated state
         self.assertFalse(self.auth.needs_migration())
@@ -126,6 +127,30 @@ class TestV12Logic(unittest.TestCase):
         # Verify phrase actually works to unlock after locking
         self.auth.lock_vault()
         self.assertTrue(self.auth.unlock_with_recovery_phrase(phrase))
+
+    def test_totp_unlock(self):
+        """Test unlocking the vault using ONLY a TOTP code."""
+        import pyotp
+        password = "MasterPassword123"
+        self.auth.setup_vault(password)
+        
+        # Get the secret from the database (obfuscated)
+        meta = self.db.get_meta()
+        secret_obf = meta[5]
+        secret = self.auth._deobfuscate_secret(secret_obf)
+        
+        # Generate valid OTP
+        totp = pyotp.TOTP(secret)
+        otp = totp.now()
+        
+        # Clear DEK
+        self.auth.lock_vault()
+        self.assertFalse(self.auth.is_unlocked())
+        
+        # Unlock via OTP
+        success = self.auth.unlock_with_totp(otp)
+        self.assertTrue(success)
+        self.assertTrue(self.auth.is_unlocked())
 
 if __name__ == "__main__":
     unittest.main()

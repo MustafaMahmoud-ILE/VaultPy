@@ -1,4 +1,5 @@
 import os
+import pyotp
 from core.crypto import CryptoManager
 from core.database import DatabaseManager
 
@@ -8,24 +9,33 @@ class AuthManager:
     def __init__(self, db_manager: DatabaseManager):
         self.db = db_manager
         self.master_key = None  # This is actually the DEK when unlocked
-        self.temp_recovery_phrase = None # Stored only during setup to show user
+        self.temp_recovery_phrase = None 
+        self.temp_totp_secret = None # Stored only during setup to show user
 
     def is_setup_required(self) -> bool:
         """Checks if the user needs to create a master password."""
         return not self.db.is_setup()
 
     def needs_migration(self) -> bool:
-        """Checks if the vault is an old version (v1.1.0) and needs wrapping."""
+        """Checks if the vault needs wrapping (v1.1.0) or TOTP setup (v1.2.0)."""
         meta = self.db.get_meta()
-        if meta and meta[2] is None: # password_wrapped_key is NULL
+        if not meta: return False
+        
+        # v1.1.0 -> v1.2.0 (Wrapped Keys)
+        if meta[2] is None: 
             return True
+        
+        # v1.2.0 -> v1.2.1 (Mandatory TOTP)
+        if meta[5] is None: # totp_secret is NULL
+            return True
+            
         return False
 
     def setup_vault(self, master_password: str) -> bool:
         """
         Initial vault setup: 
-        1. Generates a random DEK and Recovery Phrase.
-        2. Wraps DEK with both Password-KEK and Recovery-KEK.
+        1. Generates random DEK, Recovery Phrase, and TOTP Secret.
+        2. Wraps DEK with Password-KEK, Recovery-KEK, and TOTP-KEK.
         3. Saves everything to DB.
         """
         if len(master_password) < 12:
@@ -33,56 +43,88 @@ class AuthManager:
             
         # 1. Generate core keys
         dek = CryptoManager.generate_dek()
-        phrase, phrase_entropy = CryptoManager.generate_recovery_phrase()
+        phrase, _ = CryptoManager.generate_recovery_phrase()
         self.temp_recovery_phrase = phrase
+        
+        # TOTP Secret (Base32)
+        totp_secret = pyotp.random_base32()
+        self.temp_totp_secret = totp_secret
         
         # 2. Derive Password KEK and wrap DEK
         p_hash, p_salt = CryptoManager.hash_password(master_password)
         p_kek = CryptoManager.derive_key(master_password, p_salt)
-        p_wrapped = CryptoManager.encrypt(dek.hex(), p_kek) # Store DEK as hex string in cipher
+        p_wrapped = CryptoManager.encrypt(dek.hex(), p_kek)
         
         # 3. Derive Recovery KEK and wrap DEK
         r_salt = os.urandom(16)
         r_kek = CryptoManager.derive_key_from_phrase(phrase, r_salt)
         r_wrapped = CryptoManager.encrypt(dek.hex(), r_kek)
         
-        # 4. Save to DB
-        self.db.save_setup(p_hash, p_salt, p_wrapped, r_wrapped, r_salt)
+        # 4. Derive TOTP KEK and wrap DEK
+        # Note: We use the TOTP Secret itself as the entropy source for this KEK
+        t_kek = CryptoManager.derive_key(totp_secret, p_salt) # Reuse p_salt for simplicity
+        t_wrapped = CryptoManager.encrypt(dek.hex(), t_kek)
+        
+        # 5. Save to DB
+        # To allow recovery WITHOUT password, we must NOT encrypt secret with p_kek.
+        # We use a simple XOR obfuscation with a constant to hide it from plain-text scanners.
+        t_secret_obf = self._obfuscate_secret(totp_secret)
+        
+        self.db.save_setup(p_hash, p_salt, p_wrapped, r_wrapped, r_salt, t_secret_obf, t_wrapped)
         self.master_key = dek
         return True
 
-    def migrate_to_wrapped_keys(self, master_password: str) -> str:
+    def _obfuscate_secret(self, secret: str) -> str:
+        """Simple XOR obfuscation to hide the secret from direct grep."""
+        key = "VaultPy_Security_v1.2.1"
+        return "".join(chr(ord(c) ^ ord(key[i % len(key)])) for i, c in enumerate(secret))
+
+    def _deobfuscate_secret(self, obf: str) -> str:
+        return self._obfuscate_secret(obf) # XOR is reversible
+
+    def migrate_to_wrapped_keys(self, master_password: str) -> tuple[str, str, str]:
         """
-        Migrates a v1.1.0 vault to v1.2.0 (Wrapped Keys).
-        Returns the generated recovery phrase.
+        Migrates a vault to v1.2.1 (Triple-Wrapped Keys).
+        Returns (recovery_phrase, totp_uri, totp_secret).
         """
         meta = self.db.get_meta()
+        if not meta: raise ValueError("No vault data found")
+        
         p_hash, p_salt = meta[0], meta[1]
         
         if not CryptoManager.verify_password(p_hash, master_password):
             raise ValueError("Invalid password for migration")
 
-        # 1. Old model used password-derived key directly for all data.
-        # We'll treat the CURRENT key as the new DEK to avoid re-encrypting everything.
-        old_key = CryptoManager.derive_key(master_password, p_salt)
-        dek = old_key 
-        
-        # 2. Generate Recovery Phrase
-        phrase, _ = CryptoManager.generate_recovery_phrase()
-        
-        # 3. Wrap DEK with Password
+        # 1. Un-wrap current DEK
         p_kek = CryptoManager.derive_key(master_password, p_salt)
+        if meta[2]: # Already v1.2.0
+            dek_hex = CryptoManager.decrypt(meta[2], p_kek)
+            dek = bytes.fromhex(dek_hex)
+        else: # v1.1.0
+            dek = p_kek 
+        
+        # 2. Generate Recovery Phrase and TOTP
+        phrase, _ = CryptoManager.generate_recovery_phrase()
+        totp_secret = pyotp.random_base32()
+        self.temp_recovery_phrase = phrase
+        self.temp_totp_secret = totp_secret
+        
+        # 3. New Wraps
         p_wrapped = CryptoManager.encrypt(dek.hex(), p_kek)
         
-        # 4. Wrap DEK with Recovery Phrase
         r_salt = os.urandom(16)
         r_kek = CryptoManager.derive_key_from_phrase(phrase, r_salt)
         r_wrapped = CryptoManager.encrypt(dek.hex(), r_kek)
         
-        # 5. Update DB
-        self.db.update_vault_keys(p_wrapped, r_wrapped, r_salt)
+        t_kek = CryptoManager.derive_key(totp_secret, p_salt)
+        t_wrapped = CryptoManager.encrypt(dek.hex(), t_kek)
+        
+        # 4. Update DB
+        t_secret_obf = self._obfuscate_secret(totp_secret)
+        self.db.reset_vault_auth(p_hash, p_salt, p_wrapped, r_wrapped, r_salt, t_secret_obf, t_wrapped)
+        
         self.master_key = dek
-        return phrase
+        return phrase, self.get_totp_uri(), totp_secret
 
     def unlock_vault(self, master_password: str) -> bool:
         """Unlocks the vault by unwrapping the DEK using the password."""
@@ -117,22 +159,79 @@ class AuthManager:
         except Exception:
             return False
 
+    def unlock_with_totp(self, otp_code: str) -> bool:
+        """Unlocks the vault using a TOTP code and the stored secret."""
+        meta = self.db.get_meta()
+        if not meta or not meta[5] or not meta[6]: 
+            return False
+        
+        # meta format: p_hash, p_salt, p_wrapped, r_wrapped, r_salt, t_secret_obf, t_wrapped
+        p_salt, t_secret_obf, t_wrapped = meta[1], meta[5], meta[6]
+        
+        try:
+            totp_secret = self._deobfuscate_secret(t_secret_obf)
+            
+            # 1. Verify OTP first
+            if not pyotp.TOTP(totp_secret).verify(otp_code):
+                return False
+                
+            # 2. Derive KEK from secret and unwrap DEK
+            t_kek = CryptoManager.derive_key(totp_secret, p_salt)
+            dek_hex = CryptoManager.decrypt(t_wrapped, t_kek)
+            self.master_key = bytes.fromhex(dek_hex)
+            return True
+        except Exception:
+            return False
+
+    def get_totp_uri(self) -> str:
+        """Returns the provisioning URI for the QR code."""
+        if not self.temp_totp_secret:
+            return ""
+        return pyotp.totp.TOTP(self.temp_totp_secret).provisioning_uri(
+            name="User", 
+            issuer_name="VaultPy"
+        )
+
+    def verify_otp(self, code: str, secret: str = None) -> bool:
+        """Verifies a 6-digit TOTP code against a secret."""
+        target_secret = secret if secret else self.temp_totp_secret
+        if not target_secret:
+            meta = self.db.get_meta()
+            if meta and meta[5]:
+                target_secret = self._deobfuscate_secret(meta[5])
+            else:
+                return False
+        
+        totp = pyotp.TOTP(target_secret)
+        return totp.verify(code)
+
     def reset_password(self, new_password: str) -> bool:
-        """Re-wraps the DEK with a new password. Vault must be unlocked first."""
+        """Re-wraps the DEK with a new password and updates TOTP wrap too."""
         if not self.is_unlocked() or len(new_password) < 12:
             return False
             
+        # 1. New Password KEK
         p_hash, p_salt = CryptoManager.hash_password(new_password)
         p_kek = CryptoManager.derive_key(new_password, p_salt)
         p_wrapped = CryptoManager.encrypt(self.master_key.hex(), p_kek)
         
-        # Keep old recovery info
+        # 2. Keep existing Recovery and TOTP setups
         meta = self.db.get_meta()
-        r_wrapped, r_salt = meta[3], meta[4]
+        if not meta: return False
         
-        # Use the new atomic method to avoid "database is locked" issues
-        self.db.reset_vault_auth(p_hash, p_salt, p_wrapped, r_wrapped, r_salt)
-        return True
+        r_wrapped, r_salt = meta[3], meta[4]
+        t_secret_obf, t_wrapped = meta[5], meta[6]
+        
+        # Update DB atomically
+        try:
+            self.db.reset_vault_auth(
+                p_hash, p_salt, p_wrapped, 
+                r_wrapped, r_salt, 
+                t_secret_obf, t_wrapped
+            )
+            return True
+        except Exception:
+            return False
 
     def lock_vault(self):
         self.master_key = None

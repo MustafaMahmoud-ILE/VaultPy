@@ -176,13 +176,21 @@ class LoginWindow(QWidget):
         self.action_button.clicked.connect(self.handle_action)
         self.card_layout.addWidget(self.action_button)
 
-        # Recovery Link
-        self.recovery_btn = QPushButton("Lost password? Use Recovery Phrase")
-        self.recovery_btn.setObjectName("RecoveryLink")
-        self.recovery_btn.setCursor(Qt.PointingHandCursor)
-        self.recovery_btn.clicked.connect(self.handle_recovery)
-        self.recovery_btn.setVisible(False)
-        self.card_layout.addWidget(self.recovery_btn)
+        # Recovery Links
+        self.recovery_phrase_btn = QPushButton("🔑 Recover with Phrase")
+        self.recovery_phrase_btn.setObjectName("RecoveryLink")
+        self.recovery_phrase_btn.setCursor(Qt.PointingHandCursor)
+        self.recovery_phrase_btn.clicked.connect(self.handle_phrase_recovery)
+        self.recovery_phrase_btn.setVisible(False)
+        self.card_layout.addWidget(self.recovery_phrase_btn)
+
+        self.recovery_otp_btn = QPushButton("📱 Recover with Phone (OTP)")
+        self.recovery_otp_btn.setObjectName("RecoveryLink")
+        self.recovery_otp_btn.setStyleSheet("color: #89b4fa;")
+        self.recovery_otp_btn.setCursor(Qt.PointingHandCursor)
+        self.recovery_otp_btn.clicked.connect(self.handle_otp_recovery)
+        self.recovery_otp_btn.setVisible(False)
+        self.card_layout.addWidget(self.recovery_otp_btn)
 
         # Import Link
         self.import_btn = QPushButton("📥 Import Vault (.pyvault)")
@@ -223,7 +231,8 @@ class LoginWindow(QWidget):
         self.action_button.setText("Initialize Vault")
         self.confirm_password_input.setVisible(True)
         self.setup_warning.setVisible(True)
-        self.recovery_btn.setVisible(False)
+        self.recovery_phrase_btn.setVisible(False)
+        self.recovery_otp_btn.setVisible(False)
         self.reset_btn.setVisible(False)
 
     def set_login_mode(self):
@@ -232,7 +241,8 @@ class LoginWindow(QWidget):
         self.action_button.setText("Unlock Vault")
         self.confirm_password_input.setVisible(False)
         self.setup_warning.setVisible(False)
-        self.recovery_btn.setVisible(True)
+        self.recovery_phrase_btn.setVisible(True)
+        self.recovery_otp_btn.setVisible(True)
         self.reset_btn.setVisible(True)
 
     def handle_import(self):
@@ -265,24 +275,42 @@ class LoginWindow(QWidget):
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Failed to import vault: {e}")
 
-    def handle_recovery(self):
+    def handle_phrase_recovery(self):
         """Handle access restoration via 24-word phrase."""
         from PySide6.QtWidgets import QInputDialog
         phrase, ok = QInputDialog.getMultiLineText(self, "Vault Recovery", "Enter your 24-word recovery phrase:")
         if ok and phrase:
             if self.auth.unlock_with_recovery_phrase(phrase):
-                # Prompt for new password immediately
-                new_pass, ok2 = QInputDialog.getText(self, "Reset Password", "Access Restored! Enter a NEW master password:", QLineEdit.Password)
-                if ok2 and len(new_pass) >= 12:
-                    if self.auth.reset_password(new_pass):
-                        QMessageBox.information(self, "Success", "Password reset successfully. You are now logged in.")
-                        self.login_success.emit()
-                    else:
-                        QMessageBox.critical(self, "Error", "Failed to reset password.")
-                elif ok2:
-                    QMessageBox.warning(self, "Error", "Password too short. Login cancelled for safety.")
+                self._perform_password_reset_flow()
             else:
                 QMessageBox.critical(self, "Error", "Invalid Recovery Phrase. Access Denied.")
+
+    def handle_otp_recovery(self):
+        """Handle access restoration via TOTP 6-digit code."""
+        from PySide6.QtWidgets import QInputDialog
+        code, ok = QInputDialog.getText(self, "Phone Recovery", "Enter the 6-digit code from your Authenticator app:")
+        if ok and code:
+            if self.auth.unlock_with_totp(code):
+                self._perform_password_reset_flow()
+            else:
+                QMessageBox.critical(self, "Error", "Invalid or expired OTP code. Access Denied.")
+
+    def _perform_password_reset_flow(self):
+        """Internal helper to prompt for new password after recovery success."""
+        from PySide6.QtWidgets import QInputDialog
+        new_pass, ok = QInputDialog.getText(
+            self, "Reset Password", 
+            "Identity Verified! Enter a NEW master password:", 
+            QLineEdit.Password
+        )
+        if ok and len(new_pass) >= 12:
+            if self.auth.reset_password(new_pass):
+                QMessageBox.information(self, "Success", "Password reset successfully. Access granted.")
+                self.login_success.emit()
+            else:
+                QMessageBox.critical(self, "Error", "Failed to update vault keys.")
+        elif ok:
+            QMessageBox.warning(self, "Security", "New password too short. Reset aborted.")
 
     def handle_reset(self):
         msg = "Are you sure you want to RESET your vault?\n\nThis will PERMANENTLY DELETE all accounts and passwords. This action is IRREVERSIBLE."
@@ -321,17 +349,22 @@ class LoginWindow(QWidget):
                 return
             
             if self.auth.setup_vault(password):
-                # Show recovery phrase immediately
-                dialog = RecoverySetupDialog(self.auth.temp_recovery_phrase, self)
+                # Show recovery wizard (Phrase + TOTP)
+                dialog = RecoverySetupDialog(
+                    self.auth.temp_recovery_phrase, 
+                    self.auth.get_totp_uri(),
+                    self.auth.temp_totp_secret,
+                    self
+                )
                 dialog.exec()
                 self.login_success.emit()
         else:
             # Check for migration first
             if self.auth.needs_migration():
                 if self.auth.unlock_vault(password):
-                    # Perform migration
-                    phrase = self.auth.migrate_to_wrapped_keys(password)
-                    dialog = RecoverySetupDialog(phrase, self, is_migration=True)
+                    # Perform migration to Triple-Wrap (Phrase + TOTP)
+                    phrase, uri, secret = self.auth.migrate_to_wrapped_keys(password)
+                    dialog = RecoverySetupDialog(phrase, uri, secret, self, is_migration=True)
                     dialog.exec()
                     self.login_success.emit()
                 else:
