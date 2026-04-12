@@ -101,9 +101,17 @@ class VaultApp(QObject):
         # 1. Global Setup — Decrypt DB if encrypted at rest (VULN-14)
         self.latest_update_info = None
         self._db_path = DatabaseManager.resolve_default_path()
-        DatabaseManager.decrypt_file_if_needed(self._db_path)
         
-        self.db = DatabaseManager(self._db_path)
+        try:
+            DatabaseManager.decrypt_file_if_needed(self._db_path)
+            self.db = DatabaseManager(self._db_path)
+        except PermissionError as e:
+            QMessageBox.critical(None, "Security Error", f"Critical Access Failure:\n\n{str(e)}\n\nThis usually happens if your Windows user credentials have changed or if you are trying to open a vault from another computer.")
+            sys.exit(1)
+        except Exception as e:
+            QMessageBox.critical(None, "Error", f"Failed to initialize database: {type(e).__name__}: {e}")
+            sys.exit(1)
+
         self.auth = AuthManager(self.db)
         
         self.login_window = None

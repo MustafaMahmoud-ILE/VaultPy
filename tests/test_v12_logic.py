@@ -113,7 +113,7 @@ class TestV12Logic(unittest.TestCase):
         # 2. Check if migration is required
         self.assertTrue(self.auth.needs_migration())
 
-        # 3. Perform Migration
+        # 3. Perform Migration (v1.1.0 has no wrapped key, handled internally)
         phrase, uri, secret = self.auth.migrate_to_wrapped_keys(password)
         self.assertIsNotNone(phrase)
         self.assertEqual(len(phrase.split(" ")), 24)

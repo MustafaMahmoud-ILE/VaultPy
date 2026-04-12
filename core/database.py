@@ -3,7 +3,6 @@ import os
 import json
 import time
 import winreg
-import uuid
 from core.crypto import CryptoManager
 
 class DatabaseManager:
@@ -82,8 +81,7 @@ class DatabaseManager:
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
             
         self.db_path = db_path
-        self.conn = None
-        self._file_existed_at_start = os.path.exists(db_path) and os.path.getsize(db_path) > 0
+        self._file_existed_at_start = os.path.exists(db_path) and os.path.getsize(db_path) > 0 if db_path != ":memory:" else False
         
         # --- TETHERING VERIFICATION (Registry & Hardware Sync) ---
         if db_path != ":memory:" and self._file_existed_at_start:
@@ -132,10 +130,8 @@ class DatabaseManager:
             raise PermissionError("Identity Missing")
 
     def close(self):
-        """Closes the database connection safely."""
-        if self.conn:
-            self.conn.close()
-            self.conn = None
+        """No-op. Connections are managed per-call via _get_connection()."""
+        pass
 
     def _get_connection(self):
         return sqlite3.connect(self.db_path)
@@ -343,12 +339,20 @@ class DatabaseManager:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
             encrypted_data, _ = winreg.QueryValueEx(key, "StateSeal")
             winreg.CloseKey(key)
+        except (FileNotFoundError, OSError):
+            # Registry key doesn't exist yet (first run) — safe default
+            return {"AuditCount": 0, "LastMTime": 0.0}
+        
+        try:
             entropy = CryptoManager.get_hardware_id().encode()
             decrypted_data = CryptoManager.decrypt_dpapi(encrypted_data, entropy=entropy)
+            if not decrypted_data:
+                print("[SECURITY] Registry state DPAPI decryption failed — treating as tampered")
+                return {"AuditCount": 999, "LastMTime": 0.0}
             return json.loads(decrypted_data.decode())
         except Exception as e:
-            print(f"[SECURITY] Registry state read failed: {type(e).__name__}")
-            return {"AuditCount": 0, "LastMTime": 0.0}
+            print(f"[SECURITY] Registry state corrupted or tampered: {type(e).__name__}")
+            return {"AuditCount": 999, "LastMTime": 0.0}
 
     def add_account(self, service, username, password_enc, totp_enc=None, notes_enc=None):
         with self._get_connection() as conn:

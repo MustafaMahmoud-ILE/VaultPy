@@ -365,7 +365,17 @@ class LoginWindow(QWidget):
         self.animation.setStartValue(0)
         self.animation.setEndValue(1)
         self.animation.setEasingCurve(QEasingCurve.InOutQuad)
+        self.animation.finished.connect(self._restore_shadow)
         self.animation.start()
+
+    def _restore_shadow(self):
+        """Re-apply shadow effect after fade-in completes (Qt allows only one effect per widget)."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setXOffset(0)
+        shadow.setYOffset(5)
+        shadow.setColor(QColor(0, 0, 0, 150))
+        self.container.setGraphicsEffect(shadow)
 
     def handle_action(self):
         password = self.password_input.text()

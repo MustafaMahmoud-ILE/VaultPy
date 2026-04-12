@@ -1,6 +1,5 @@
 import os
 import pyotp
-import ctypes
 from contextlib import contextmanager
 from core.crypto import CryptoManager
 from core.database import DatabaseManager
@@ -41,6 +40,10 @@ class AuthManager:
         reg_count = reg_state.get("AuditCount", 0)
         reg_mtime = reg_state.get("LastMTime", 0.0)
         
+        # Guard: In-memory databases have no filesystem metadata
+        if self.db.db_path == ":memory:":
+            return max(db_count, reg_count) >= 5
+        
         current_mtime = os.path.getmtime(self.db.db_path)
         
         # 1. Detection of 'Time Travel' (Database rollback)
@@ -62,7 +65,7 @@ class AuthManager:
 
         return max(db_count, reg_count) >= 5
 
-    def setup_vault(self, master_password: str) -> bool:
+    def setup_vault(self, master_password: str):
         """
         Initial vault setup: 
         1. Generates random DEK, Recovery Phrase, and TOTP Secret.
@@ -105,7 +108,10 @@ class AuthManager:
         
         # Cloak DEK in RAM using DPAPI (hardware-bound encryption)
         self._session_key = os.urandom(32)
-        self._protected_dek = CryptoManager.encrypt_dpapi(dek, entropy=self._session_key)
+        protected = CryptoManager.encrypt_dpapi(dek, entropy=self._session_key)
+        if not protected:
+            raise RuntimeError("DPAPI encryption failed — cannot protect DEK in RAM")
+        self._protected_dek = protected
         
         return phrase, self.get_totp_uri(), totp_secret
 
@@ -124,7 +130,10 @@ class AuthManager:
         if isinstance(obf, str) and obf.startswith("DPAPI:"):
             encrypted = bytes.fromhex(obf[6:])
             entropy = CryptoManager.get_hardware_id().encode()
-            return CryptoManager.decrypt_dpapi(encrypted, entropy=entropy).decode()
+            result = CryptoManager.decrypt_dpapi(encrypted, entropy=entropy)
+            if not result:
+                raise ValueError("DPAPI decryption of TOTP secret failed — possible profile corruption")
+            return result.decode()
         # Legacy XOR fallback for pre-upgrade vaults
         key = CryptoManager.get_hardware_id() + "_VaultPy_Security_v1.2.4"
         return "".join(chr(ord(c) ^ ord(key[i % len(key)])) for i, c in enumerate(obf))
@@ -158,6 +167,7 @@ class AuthManager:
     def migrate_to_wrapped_keys(self, master_password: str) -> tuple[str, str, str]:
         """
         Migrates a vault to v1.2.1 (Triple-Wrapped Keys).
+        Vault must already be unlocked via unlock_vault().
         Returns (recovery_phrase, totp_uri, totp_secret).
         """
         meta = self.db.get_meta()
@@ -165,33 +175,39 @@ class AuthManager:
         
         p_hash, p_salt = meta[0], meta[1]
         
-        if not CryptoManager.verify_password(p_hash, master_password):
-            raise ValueError("Invalid password for migration")
-
-        # 1. Un-wrap current DEK — try current constants, fallback to compat
-        dek = None
+        # Use the already-unlocked DEK if available (avoids redundant Argon2 derivation)
+        with self._get_plaintext_dek() as dek_raw:
+            if dek_raw:
+                dek = bytes(dek_raw)
+            else:
+                # v1.1.0 fallback: vault has no wrapped key, DEK = KEK (direct derivation)
+                if not CryptoManager.verify_password(p_hash, master_password):
+                    raise ValueError("Invalid password for migration")
+                try:
+                    dek = CryptoManager.derive_key(master_password, p_salt)
+                except Exception:
+                    dek = CryptoManager.derive_key_compat(master_password, p_salt, p_hash)
+                
+                # Cloak DEK in RAM for v1.1.0 migration
+                self._session_key = os.urandom(32)
+                protected = CryptoManager.encrypt_dpapi(dek, entropy=self._session_key)
+                if not protected:
+                    raise RuntimeError("DPAPI encryption failed — cannot protect DEK in RAM during migration")
+                self._protected_dek = protected
+        
+        # Derive p_kek for wrapping (single derivation, skips redundant verify_password)
         try:
             p_kek = CryptoManager.derive_key(master_password, p_salt)
-            if meta[2]: # Already v1.2.0
-                dek_hex = CryptoManager.decrypt(meta[2], p_kek)
-                dek = bytes.fromhex(dek_hex)
-            else: # v1.1.0
-                dek = p_kek
         except Exception:
             p_kek = CryptoManager.derive_key_compat(master_password, p_salt, p_hash)
-            if meta[2]:
-                dek_hex = CryptoManager.decrypt(meta[2], p_kek)
-                dek = bytes.fromhex(dek_hex)
-            else:
-                dek = p_kek 
         
-        # 2. Generate Recovery Phrase and TOTP
+        # Generate Recovery Phrase and TOTP
         phrase, _ = CryptoManager.generate_recovery_phrase()
         totp_secret = pyotp.random_base32()
         self.temp_recovery_phrase = phrase
         self.temp_totp_secret = totp_secret
         
-        # 3. New Wraps
+        # New Wraps
         p_wrapped = CryptoManager.encrypt(dek.hex(), p_kek)
         
         r_salt = os.urandom(16)
@@ -201,14 +217,11 @@ class AuthManager:
         t_kek = CryptoManager.derive_key(totp_secret, p_salt)
         t_wrapped = CryptoManager.encrypt(dek.hex(), t_kek)
         
-        # 4. Update DB
+        # Update DB
         t_secret_obf = self._obfuscate_secret(totp_secret)
         self.db.reset_vault_auth(p_hash, p_salt, p_wrapped, r_wrapped, r_salt, t_secret_obf, t_wrapped)
         
-        # Cloak DEK in RAM using DPAPI
-        self._session_key = os.urandom(32)
-        self._protected_dek = CryptoManager.encrypt_dpapi(dek, entropy=self._session_key)
-        
+        # DEK is already protected in _protected_dek from the unlock call
         return phrase, self.get_totp_uri(), totp_secret
 
     def unlock_vault(self, master_password: str) -> bool:
@@ -245,7 +258,10 @@ class AuthManager:
             
             # Cloak DEK in RAM using DPAPI
             self._session_key = os.urandom(32)
-            self._protected_dek = CryptoManager.encrypt_dpapi(dek_raw, entropy=self._session_key)
+            protected = CryptoManager.encrypt_dpapi(dek_raw, entropy=self._session_key)
+            if not protected:
+                raise RuntimeError("DPAPI encryption failed — cannot protect DEK in RAM")
+            self._protected_dek = protected
             
             # 4. RESET on success
             self.db.reset_failed_attempts()
@@ -286,7 +302,10 @@ class AuthManager:
         try:
             # Cloak DEK in RAM using DPAPI
             self._session_key = os.urandom(32)
-            self._protected_dek = CryptoManager.encrypt_dpapi(dek_raw, entropy=self._session_key)
+            protected = CryptoManager.encrypt_dpapi(dek_raw, entropy=self._session_key)
+            if not protected:
+                raise RuntimeError("DPAPI encryption failed — cannot protect DEK in RAM")
+            self._protected_dek = protected
             self.db.reset_failed_attempts()
             self._migrate_totp_secret_if_needed()
             return True
@@ -330,7 +349,10 @@ class AuthManager:
             
             # Cloak DEK in RAM using DPAPI
             self._session_key = os.urandom(32)
-            self._protected_dek = CryptoManager.encrypt_dpapi(dek_raw, entropy=self._session_key)
+            protected = CryptoManager.encrypt_dpapi(dek_raw, entropy=self._session_key)
+            if not protected:
+                raise RuntimeError("DPAPI encryption failed — cannot protect DEK in RAM")
+            self._protected_dek = protected
             
             self.db.reset_failed_attempts()
             self._migrate_totp_secret_if_needed()
@@ -409,8 +431,9 @@ class AuthManager:
                     totp_secret = self._deobfuscate_secret(t_secret_obf)
                     t_kek = CryptoManager.derive_key(totp_secret, p_salt)
                     t_wrapped = CryptoManager.encrypt(dek_hex, t_kek)
-                except Exception:
-                    pass  # Keep old t_wrapped if deobfuscation fails
+                except Exception as e:
+                    print(f"[SECURITY] TOTP re-wrap failed during password reset: {type(e).__name__}")
+                    return False  # Abort reset to prevent orphaning TOTP unlock path
 
             # Update DB atomically
             try:
@@ -429,17 +452,7 @@ class AuthManager:
         self._protected_dek = None
         self._session_key = None
 
-    def _secure_wipe(self, buffer):
-        """Hard-wipes a bytearray by filling it with zeros using C-level access."""
-        try:
-            # Get the pointer to the buffer and its size
-            size = len(buffer)
-            addr = (ctypes.c_char * size).from_buffer(buffer)
-            ctypes.memset(addr, 0, size)
-        except Exception:
-            # Fallback for immutable-like behavior (less secure but non-crashing)
-            for i in range(len(buffer)):
-                buffer[i] = 0
+
 
     def is_unlocked(self) -> bool:
         return self._protected_dek is not None and self._session_key is not None
