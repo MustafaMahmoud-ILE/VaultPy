@@ -8,6 +8,7 @@ from PySide6.QtGui import QIcon
 from core.database import DatabaseManager
 from core.auth import AuthManager
 from core.updater import Updater
+from core.defense import CoreDefense
 from ui.login_window import LoginWindow
 from ui.vault_window import VaultWindow
 
@@ -69,7 +70,7 @@ class DownloadWorker(QThread):
 
 class VaultApp(QObject):
     IDLE_TIMEOUT = 2 * 60 * 1000  # 2 minutes in ms
-    VERSION = "1.2.4"
+    VERSION = "1.3.0"
     update_detected = Signal(str, str, str) # version, url, notes
 
     def __init__(self):
@@ -97,15 +98,21 @@ class VaultApp(QObject):
         # 0. Migrate data if necessary
         self.migrate_database()
         
-        # 1. Global Setup
+        # 1. Global Setup — Decrypt DB if encrypted at rest (VULN-14)
         self.latest_update_info = None
+        self._db_path = DatabaseManager.resolve_default_path()
+        DatabaseManager.decrypt_file_if_needed(self._db_path)
         
-        self.db = DatabaseManager()
+        self.db = DatabaseManager(self._db_path)
         self.auth = AuthManager(self.db)
         
         self.login_window = None
         self.vault_window = None
         self.idle_filter = None
+        
+        # 2. Start Runtime Defense Watchdog
+        self.defense = CoreDefense(lockout_callback=self.auth.lock_vault)
+        self.defense.start()
         
         # Single Instance Lock
         self.lock_file = QLockFile(QDir.tempPath() + "/vaultpy.lock")
@@ -223,7 +230,13 @@ class VaultApp(QObject):
                 print(f"Migration failed: {e}")
 
     def run(self):
-        sys.exit(self.app.exec())
+        exit_code = self.app.exec()
+        # Re-encrypt DB for at-rest protection on graceful exit (VULN-14)
+        try:
+            DatabaseManager.encrypt_file(self._db_path)
+        except Exception as e:
+            print(f"[WARNING] DB encryption on exit failed: {e}")
+        sys.exit(exit_code)
 
 if __name__ == "__main__":
     app = VaultApp()

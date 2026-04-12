@@ -1,11 +1,72 @@
 import sqlite3
 import os
-import winreg
 import json
-from datetime import datetime
+import time
+import winreg
+import uuid
+from core.crypto import CryptoManager
 
 class DatabaseManager:
-    """Handles all database interactions for VaultPy."""
+    """Handles all database interactions for VaultPy with strict machine-tethering."""
+
+    ENCRYPTED_HEADER = b"VPYX\x00"  # Magic header for encrypted-at-rest DB files
+
+    @staticmethod
+    def resolve_default_path():
+        """Resolves the default database file path."""
+        app_data = os.getenv('APPDATA')
+        if app_data:
+            return os.path.join(app_data, "VaultPy", "vault.db")
+        return os.path.join(os.path.expanduser("~"), ".vaultpy", "vault.db")
+
+    @staticmethod
+    def encrypt_file(db_path):
+        """Encrypts the database file with DPAPI for at-rest protection."""
+        if not db_path or db_path == ":memory:" or not os.path.exists(db_path):
+            return
+        try:
+            with open(db_path, 'rb') as f:
+                header = f.read(5)
+            if header == DatabaseManager.ENCRYPTED_HEADER:
+                return  # Already encrypted
+            with open(db_path, 'rb') as f:
+                data = f.read()
+            if not data:
+                return
+            entropy = CryptoManager.get_hardware_id().encode()
+            encrypted = CryptoManager.encrypt_dpapi(data, entropy=entropy)
+            if encrypted:
+                with open(db_path, 'wb') as f:
+                    f.write(DatabaseManager.ENCRYPTED_HEADER + encrypted)
+                print("[SECURITY] Database encrypted at rest.")
+        except Exception as e:
+            print(f"[WARNING] Failed to encrypt database at rest: {e}")
+
+    @staticmethod
+    def decrypt_file_if_needed(db_path):
+        """Decrypts the database file if it's DPAPI-encrypted."""
+        if not db_path or db_path == ":memory:" or not os.path.exists(db_path):
+            return
+        try:
+            with open(db_path, 'rb') as f:
+                header = f.read(5)
+            if header != DatabaseManager.ENCRYPTED_HEADER:
+                return  # Not encrypted, nothing to do
+            with open(db_path, 'rb') as f:
+                f.seek(5)  # Skip header
+                encrypted = f.read()
+            entropy = CryptoManager.get_hardware_id().encode()
+            decrypted = CryptoManager.decrypt_dpapi(encrypted, entropy=entropy)
+            if decrypted:
+                with open(db_path, 'wb') as f:
+                    f.write(decrypted)
+                print("[SECURITY] Database decrypted for session.")
+            else:
+                raise PermissionError("Failed to decrypt database. DPAPI key may have changed.")
+        except PermissionError:
+            raise
+        except Exception as e:
+            print(f"[WARNING] Database decryption check failed: {e}")
 
     def __init__(self, db_path=None):
         if db_path is None:
@@ -14,14 +75,67 @@ class DatabaseManager:
             if app_data:
                 db_path = os.path.join(app_data, "VaultPy", "vault.db")
             else:
-                # Fallback for non-Windows or if APPDATA is missing
                 db_path = os.path.join(os.path.expanduser("~"), ".vaultpy", "vault.db")
 
-        # Ensure data directory exists (unless using in-memory DB for tests)
+        # Ensure data directory exists
         if db_path != ":memory:":
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            
         self.db_path = db_path
+        self.conn = None
+        self._file_existed_at_start = os.path.exists(db_path) and os.path.getsize(db_path) > 0
+        
+        # --- TETHERING VERIFICATION (Registry & Hardware Sync) ---
+        if db_path != ":memory:" and self._file_existed_at_start:
+            # Database file exists. We MUST have a valid Registry Anchor.
+            try:
+                self._verify_machine_tether_at_boot()
+            except (PermissionError, FileNotFoundError, OSError):
+                # If Registry is missing or AnchorUUID is gone -> LOG SECURITY EVENT
+                raise PermissionError("CRITICAL: Vault Identity Missing or Tampered (Registry Mismatch). Access Denied.")
+        
         self._initialize_db()
+
+    def _verify_machine_tether_at_boot(self):
+        """Strictly verifies that this DB belongs to this machine's Registry."""
+        key_path = r"Software\VaultPy\SecurityState"
+        
+        # Check if DB has an anchor first
+        db_anchor = None
+        try:
+            with sqlite3.connect(self.db_path) as temp_conn:
+                cursor = temp_conn.cursor()
+                cursor.execute("SELECT registry_uid FROM meta LIMIT 1")
+                row = cursor.fetchone()
+                db_anchor = row[0] if row else None
+        except sqlite3.OperationalError:
+            # Table or column doesn't exist -> Migration case, allow.
+            return
+
+        if not db_anchor:
+            # DB has never been tethered (Old version or fresh file) -> Allow to initialize.
+            return
+
+        # DB has an anchor! We MUST match it with the Registry.
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+            reg_uid_enc, _ = winreg.QueryValueEx(key, "AnchorUUID")
+            winreg.CloseKey(key)
+            
+            entropy = CryptoManager.get_hardware_id().encode()
+            reg_uid = CryptoManager.decrypt_dpapi(reg_uid_enc, entropy=entropy).decode()
+            
+            if db_anchor != reg_uid:
+                raise PermissionError("Identity Mismatch")
+        except (FileNotFoundError, OSError, sqlite3.Error):
+            # DB expects an anchor, but Registry is empty/missing -> TAMPER DETECTED!
+            raise PermissionError("Identity Missing")
+
+    def close(self):
+        """Closes the database connection safely."""
+        if self.conn:
+            self.conn.close()
+            self.conn = None
 
     def _get_connection(self):
         return sqlite3.connect(self.db_path)
@@ -43,12 +157,13 @@ class DatabaseManager:
                     totp_secret TEXT,
                     totp_wrapped_key BLOB,
                     failed_attempts INTEGER DEFAULT 0,
+                    registry_uid TEXT,
                     integrity_signature BLOB,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
-            # Accounts table for stored secrets
+            # Accounts table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS accounts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,172 +176,148 @@ class DatabaseManager:
                 )
             """)
             
-            # Migration: Add columns if they don't exist (for existing v1.1.0 databases)
+            # Migration check
             cursor.execute("PRAGMA table_info(meta)")
             columns = [info[1] for info in cursor.fetchall()]
-            if 'password_wrapped_key' not in columns:
-                cursor.execute("ALTER TABLE meta ADD COLUMN password_wrapped_key BLOB")
-            if 'recovery_wrapped_key' not in columns:
-                cursor.execute("ALTER TABLE meta ADD COLUMN recovery_wrapped_key BLOB")
-            if 'recovery_salt' not in columns:
-                cursor.execute("ALTER TABLE meta ADD COLUMN recovery_salt BLOB")
-            if 'totp_secret' not in columns:
-                cursor.execute("ALTER TABLE meta ADD COLUMN totp_secret TEXT")
-            if 'totp_wrapped_key' not in columns:
-                cursor.execute("ALTER TABLE meta ADD COLUMN totp_wrapped_key BLOB")
+            if 'registry_uid' not in columns:
+                cursor.execute("ALTER TABLE meta ADD COLUMN registry_uid TEXT")
             if 'failed_attempts' not in columns:
                 cursor.execute("ALTER TABLE meta ADD COLUMN failed_attempts INTEGER DEFAULT 0")
             if 'integrity_signature' not in columns:
                 cursor.execute("ALTER TABLE meta ADD COLUMN integrity_signature BLOB")
                 
-            # Auto-sign if migration occurred or if signature is missing
             self._ensure_integrity(cursor)
-                
             conn.commit()
 
     def _get_integrity_data(self, cursor):
         """Collects critical metadata for integrity hashing."""
-        cursor.execute("SELECT id, password_hash, failed_attempts FROM meta LIMIT 1")
-        row = cursor.fetchone()
-        if not row: return None
-        return f"{row[0]}|{row[1]}|{row[2]}"
+        try:
+            cursor.execute("SELECT id, password_hash, failed_attempts FROM meta LIMIT 1")
+            row = cursor.fetchone()
+            if not row: return None
+            return f"{row[0]}|{row[1]}|{row[2]}"
+        except Exception as e:
+            print(f"[SECURITY] Integrity data read error: {type(e).__name__}")
+            return None
 
     def _ensure_integrity(self, cursor):
-        """Verifies or initializes the integrity signature."""
-        cursor.execute("SELECT integrity_signature FROM meta LIMIT 1")
-        sig = cursor.fetchone()
-        if sig and sig[0]:
-            return # Already has a signature
-            
-        # Initialize signature for existing data
         self._update_integrity_signature(cursor)
 
-    def _get_system_integrity_key(self) -> str:
-        """Retrieves or generates a unique, machine-bound HMAC key for database integrity."""
+    def _get_system_integrity_key(self, cursor=None) -> str:
+        """Retrieves or generates the HMAC key. No logic branches here, just IO."""
         from core.crypto import CryptoManager
         key_path = r"Software\VaultPy\SecurityState"
         seal_name = "SystemSeal"
+        entropy = CryptoManager.get_hardware_id().encode()
         
         try:
-            # 1. Try to fetch existing sealed key
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
-            encrypted_key, _ = winreg.QueryValueEx(key, seal_name)
-            winreg.CloseKey(key)
+            # Read Existing
+            key_reg = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+            encrypted_key, _ = winreg.QueryValueEx(key_reg, seal_name)
             
-            # Use HWID as secondary entropy
-            entropy = CryptoManager.get_hardware_id().encode()
-            decrypted_key = CryptoManager.decrypt_dpapi(encrypted_key, entropy=entropy)
-            if not decrypted_key:
-                raise ValueError("DPAPI Decryption Failed")
-            return decrypted_key.decode()
+            # Also ensure registry_uid is populated in DB (prevents integrity bypass)
+            if cursor:
+                cursor.execute("SELECT registry_uid FROM meta LIMIT 1")
+                uid_row = cursor.fetchone()
+                if uid_row and not uid_row[0]:
+                    try:
+                        enc_uid, _ = winreg.QueryValueEx(key_reg, "AnchorUUID")
+                        uid = CryptoManager.decrypt_dpapi(enc_uid, entropy=entropy).decode()
+                        cursor.execute("UPDATE meta SET registry_uid = ? WHERE id = (SELECT id FROM meta LIMIT 1)", (uid,))
+                    except (FileNotFoundError, OSError):
+                        pass
             
-        except (FileNotFoundError, OSError, ValueError):
-            # 2. Key doesn't exist or is corrupted - generate new one
+            winreg.CloseKey(key_reg)
+            return CryptoManager.decrypt_dpapi(encrypted_key, entropy=entropy).decode()
+        except (FileNotFoundError, OSError):
+            # Generate New
             new_key = os.urandom(32).hex()
-            entropy = CryptoManager.get_hardware_id().encode()
-            encrypted_new_key = CryptoManager.encrypt_dpapi(new_key.encode(), entropy=entropy)
+            new_uid = os.urandom(16).hex()
             
-            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
-            winreg.SetValueEx(key, seal_name, 0, winreg.REG_BINARY, encrypted_new_key)
-            winreg.CloseKey(key)
+            enc_key = CryptoManager.encrypt_dpapi(new_key.encode(), entropy=entropy)
+            enc_uid = CryptoManager.encrypt_dpapi(new_uid.encode(), entropy=entropy)
+            
+            reg_key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+            winreg.SetValueEx(reg_key, seal_name, 0, winreg.REG_BINARY, enc_key)
+            winreg.SetValueEx(reg_key, "AnchorUUID", 0, winreg.REG_BINARY, enc_uid)
+            winreg.CloseKey(reg_key)
+            
+            # Push UID to DB
+            if cursor:
+                cursor.execute("UPDATE meta SET registry_uid = ? WHERE id = (SELECT id FROM meta LIMIT 1)", (new_uid,))
             return new_key
 
     def _update_integrity_signature(self, cursor):
-        """Calculates and saves HMAC of current metadata using a dynamic System Key."""
         from core.crypto import CryptoManager
         data = self._get_integrity_data(cursor)
         if not data: return
         
-        # Key = HardwareID + Registry-Sealed System Key (Non-static)
-        dynamic_key = self._get_system_integrity_key()
+        dynamic_key = self._get_system_integrity_key(cursor)
         hmac_key = CryptoManager.get_hardware_id() + dynamic_key
         signature = CryptoManager.get_hmac_signature(data, hmac_key)
-        
         cursor.execute("UPDATE meta SET integrity_signature = ? WHERE id = (SELECT id FROM meta LIMIT 1)", (signature,))
 
     def verify_integrity(self) -> bool:
-        """Checks if metadata has been tampered with using the Dynamic Integrity Seal."""
         from core.crypto import CryptoManager
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            data = self._get_integrity_data(cursor)
-            cursor.execute("SELECT integrity_signature FROM meta LIMIT 1")
+            
+            # 1. Check if DB has an anchor yet
+            cursor.execute("SELECT registry_uid, integrity_signature FROM meta LIMIT 1")
             row = cursor.fetchone()
+            if not row or not row[0]: 
+                # UNTETHERED: Allow access for migration/setup
+                return True
+                
+            data = self._get_integrity_data(cursor)
+            if not data or not row[1]: 
+                # No data to check or signature missing but anchor exists? Suspect.
+                return False
             
-            if not data or not row or not row[0]:
-                return True # Nothing to verify yet
-            
-            dynamic_key = self._get_system_integrity_key()
+            dynamic_key = self._get_system_integrity_key(cursor)
             hmac_key = CryptoManager.get_hardware_id() + dynamic_key
-            return CryptoManager.verify_hmac_signature(data, row[0], hmac_key)
+            return CryptoManager.verify_hmac_signature(data, row[1], hmac_key)
 
     def is_setup(self):
-        """Checks if a master password has already been set up."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM meta")
             return cursor.fetchone()[0] > 0
 
     def save_setup(self, password_hash, salt, p_wrapped=None, r_wrapped=None, r_salt=None, t_secret=None, t_wrapped=None):
-        """Saves the initial setup data."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                """INSERT INTO meta 
-                   (password_hash, salt, password_wrapped_key, recovery_wrapped_key, recovery_salt, totp_secret, totp_wrapped_key) 
+                """INSERT INTO meta (password_hash, salt, password_wrapped_key, recovery_wrapped_key, recovery_salt, totp_secret, totp_wrapped_key) 
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (password_hash, salt, p_wrapped, r_wrapped, r_salt, t_secret, t_wrapped)
             )
             self._update_integrity_signature(cursor)
             conn.commit()
 
-    def update_vault_keys(self, p_wrapped, r_wrapped, r_salt, t_secret=None, t_wrapped=None):
-        """Updates the wrapped keys in the meta table."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """UPDATE meta SET 
-                   password_wrapped_key = ?, 
-                   recovery_wrapped_key = ?, 
-                   recovery_salt = ?,
-                   totp_secret = ?,
-                   totp_wrapped_key = ?
-                   WHERE id = (SELECT id FROM meta LIMIT 1)""",
-                (p_wrapped, r_wrapped, r_salt, t_secret, t_wrapped)
-            )
-            self._update_integrity_signature(cursor)
-            conn.commit()
-
     def get_meta(self):
-        """Retrieves all vault metadata."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT password_hash, salt, password_wrapped_key, recovery_wrapped_key, recovery_salt, totp_secret, totp_wrapped_key, failed_attempts FROM meta LIMIT 1")
             return cursor.fetchone()
 
     def get_failed_attempts(self) -> int:
-        """Returns the current number of failed master password attempts with integrity check."""
-        if not self.verify_integrity():
-            return 999 # Emergency lockout if tampering detected
+        if not self.verify_integrity(): return 999
         meta = self.get_meta()
         return meta[7] if meta else 0
 
     def increment_failed_attempts(self):
-        """Increments the failed attempts counter in DB and Registry."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE meta SET failed_attempts = failed_attempts + 1 WHERE id = (SELECT id FROM meta LIMIT 1)")
             self._update_integrity_signature(cursor)
             conn.commit()
             
-            # Sync to registry
             cursor.execute("SELECT failed_attempts FROM meta LIMIT 1")
             row = cursor.fetchone()
-            if row:
-                self._sync_to_registry(row[0])
+            if row: self._sync_to_registry(row[0])
 
     def reset_failed_attempts(self):
-        """Resets the failed attempts counter to zero in DB and Registry."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE meta SET failed_attempts = 0 WHERE id = (SELECT id FROM meta LIMIT 1)")
@@ -235,116 +326,110 @@ class DatabaseManager:
             self._sync_to_registry(0)
 
     def _sync_to_registry(self, count):
-        """Hidden synchronization of failed attempts and mtime to Windows Registry (DPAPI Encrypted)."""
-        from core.crypto import CryptoManager
+        key_path = r"Software\VaultPy\SecurityState"
         try:
-            mtime = os.path.getmtime(self.db_path)
-            state = {
-                "AuditCount": count,
-                "LastMTime": mtime
-            }
-            raw_data = json.dumps(state).encode()
-            
-            # Use HWID as secondary entropy
+            data = json.dumps({"AuditCount": count, "LastMTime": time.time()}).encode()
             entropy = CryptoManager.get_hardware_id().encode()
-            encrypted_data = CryptoManager.encrypt_dpapi(raw_data, entropy=entropy)
-            
-            key_path = r"Software\VaultPy\SecurityState"
+            encrypted_data = CryptoManager.encrypt_dpapi(data, entropy=entropy)
             key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
             winreg.SetValueEx(key, "StateSeal", 0, winreg.REG_BINARY, encrypted_data)
             winreg.CloseKey(key)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[SECURITY] Registry sync failed: {type(e).__name__}: {e}")
 
     def get_registry_state(self) -> dict:
-        """Retrieves the sealed security state (count, mtime) from the Registry."""
-        from core.crypto import CryptoManager
+        key_path = r"Software\VaultPy\SecurityState"
         try:
-            key_path = r"Software\VaultPy\SecurityState"
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
             encrypted_data, _ = winreg.QueryValueEx(key, "StateSeal")
             winreg.CloseKey(key)
-            
-            # Use HWID as secondary entropy
             entropy = CryptoManager.get_hardware_id().encode()
             decrypted_data = CryptoManager.decrypt_dpapi(encrypted_data, entropy=entropy)
             return json.loads(decrypted_data.decode())
-        except Exception:
+        except Exception as e:
+            print(f"[SECURITY] Registry state read failed: {type(e).__name__}")
             return {"AuditCount": 0, "LastMTime": 0.0}
 
     def add_account(self, service, username, password_enc, totp_enc=None, notes_enc=None):
-        """Adds a new account entry."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                """INSERT INTO accounts 
-                   (service, username, password_encrypted, totp_secret_encrypted, notes_encrypted) 
-                   VALUES (?, ?, ?, ?, ?)""",
+                "INSERT INTO accounts (service, username, password_encrypted, totp_secret_encrypted, notes_encrypted) VALUES (?, ?, ?, ?, ?)",
                 (service, username, password_enc, totp_enc, notes_enc)
             )
             conn.commit()
+
+    def get_accounts(self):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, service, username, password_encrypted, totp_secret_encrypted, notes_encrypted FROM accounts")
+            return cursor.fetchall()
+
+    def delete_account(self, account_id):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+            conn.commit()
+
+    def reset_vault_auth(self, p_hash, p_salt, p_wrapped, r_wrapped, r_salt, t_secret, t_wrapped):
+        """Atomically resets all authentication data in the meta table."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """UPDATE meta SET password_hash = ?, salt = ?, password_wrapped_key = ?,
+                   recovery_wrapped_key = ?, recovery_salt = ?, totp_secret = ?, totp_wrapped_key = ?,
+                   failed_attempts = 0
+                   WHERE id = (SELECT id FROM meta LIMIT 1)""",
+                (p_hash, p_salt, p_wrapped, r_wrapped, r_salt, t_secret, t_wrapped)
+            )
+            self._update_integrity_signature(cursor)
+            conn.commit()
+
+    def get_all_accounts(self):
+        """Returns all accounts as Account objects."""
+        from models.account import Account
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, service, username, password_encrypted, totp_secret_encrypted, notes_encrypted, created_at FROM accounts")
+            return [Account(*row) for row in cursor.fetchall()]
+
+    def search_accounts(self, query):
+        """Searches accounts by service or username (case-insensitive)."""
+        from models.account import Account
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, service, username, password_encrypted, totp_secret_encrypted, notes_encrypted, created_at FROM accounts WHERE service LIKE ? OR username LIKE ?",
+                (f"%{query}%", f"%{query}%")
+            )
+            return [Account(*row) for row in cursor.fetchall()]
 
     def update_account(self, account_id, service, username, password_enc, totp_enc=None, notes_enc=None):
         """Updates an existing account entry."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                """UPDATE accounts 
-                   SET service = ?, username = ?, password_encrypted = ?, 
-                       totp_secret_encrypted = ?, notes_encrypted = ?
-                   WHERE id = ?""",
+                "UPDATE accounts SET service = ?, username = ?, password_encrypted = ?, totp_secret_encrypted = ?, notes_encrypted = ? WHERE id = ?",
                 (service, username, password_enc, totp_enc, notes_enc, account_id)
             )
             conn.commit()
 
-    def delete_account(self, account_id):
-        """Deletes an account entry."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
-            conn.commit()
-
-    def get_all_accounts(self):
-        """Retrieves all account entries as Account objects."""
-        from models.account import Account
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM accounts ORDER BY service ASC")
-            rows = cursor.fetchall()
-            return [Account(*row) for row in rows]
-
-    def search_accounts(self, query):
-        """Searches accounts by service or username, returns Account objects."""
-        from models.account import Account
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM accounts WHERE service LIKE ? OR username LIKE ? ORDER BY service ASC",
-                (f"%{query}%", f"%{query}%")
-            )
-            rows = cursor.fetchall()
-            return [Account(*row) for row in rows]
-
     def factory_reset(self):
-        """Wipes the entire database to allow a fresh start."""
+        """Permanently wipes all vault data and resets security state."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DROP TABLE IF EXISTS accounts")
-            cursor.execute("DROP TABLE IF EXISTS meta")
-            conn.commit()
-        # Re-initialize the tables
-        self._initialize_db()
-
-    def reset_vault_auth(self, password_hash, salt, p_wrapped, r_wrapped, r_salt, t_secret=None, t_wrapped=None):
-        """Atomically wipes and re-initializes vault authentication metadata. Fixes locking issues."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
+            cursor.execute("DELETE FROM accounts")
             cursor.execute("DELETE FROM meta")
-            cursor.execute(
-                """INSERT INTO meta 
-                   (password_hash, salt, password_wrapped_key, recovery_wrapped_key, recovery_salt, totp_secret, totp_wrapped_key) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (password_hash, salt, p_wrapped, r_wrapped, r_salt, t_secret, t_wrapped)
-            )
-            self._update_integrity_signature(cursor)
             conn.commit()
+        # Clean up Windows Registry security state
+        key_path = r"Software\VaultPy\SecurityState"
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
+            for name in ["StateSeal", "SystemSeal", "AnchorUUID"]:
+                try:
+                    winreg.DeleteValue(key, name)
+                except FileNotFoundError:
+                    pass
+            winreg.CloseKey(key)
+        except Exception:
+            pass

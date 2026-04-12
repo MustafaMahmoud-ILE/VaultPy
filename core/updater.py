@@ -26,7 +26,12 @@ class Updater:
                     latest_ver = latest_tag.lstrip('v')
                     current_ver = current_version.lstrip('v')
                     
-                    if latest_ver > current_ver:
+                    # Semantic version comparison (handles multi-digit segments)
+                    try:
+                        is_newer = tuple(int(x) for x in latest_ver.split('.')) > tuple(int(x) for x in current_ver.split('.'))
+                    except (ValueError, TypeError):
+                        is_newer = latest_ver > current_ver
+                    if is_newer:
                         assets = data.get("assets", [])
                         download_url = None
                         for asset in assets:
@@ -42,7 +47,7 @@ class Updater:
 
     @staticmethod
     def download_update(url, target_path, progress_callback=None):
-        """Downloads the update ZIP with progress reporting."""
+        """Downloads the update ZIP with progress reporting and integrity validation."""
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'VaultPy'})
             with urllib.request.urlopen(req, timeout=60) as response:
@@ -63,6 +68,21 @@ class Updater:
                             downloaded += len(chunk)
                             if progress_callback and total_size > 0:
                                 progress_callback(int(downloaded / total_size * 100))
+                    
+                    # VULN-17: Integrity validation
+                    # 1. Verify file size matches Content-Length (detect truncation)
+                    actual_size = os.path.getsize(target_path)
+                    if total_size > 0 and actual_size != total_size:
+                        print(f"[SECURITY] Update size mismatch: expected {total_size}, got {actual_size}")
+                        os.remove(target_path)
+                        return False
+                    
+                    # 2. Verify the file is a valid ZIP archive
+                    if not zipfile.is_zipfile(target_path):
+                        print("[SECURITY] Downloaded update is not a valid ZIP archive")
+                        os.remove(target_path)
+                        return False
+                    
                     return True
                 return False
         except Exception as e:
@@ -120,7 +140,7 @@ rd /s /q "{temp_dir}"
 """)
 
             # 4. Launch the Batch Script and Exit
-            subprocess.Popen(["cmd.exe", "/c", bat_path], shell=True)
+            subprocess.Popen(["cmd.exe", "/c", bat_path])
             return True
         except Exception as e:
             print(f"Installation setup failed: {e}")

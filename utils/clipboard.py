@@ -7,7 +7,7 @@ class ClipboardManager:
     _timer = None
 
     @staticmethod
-    def copy(text: str, clear_after=20000):
+    def copy(text: str, clear_after=10000):
         """Copies text to clipboard and schedules clearing."""
         pyperclip.copy(text)
 

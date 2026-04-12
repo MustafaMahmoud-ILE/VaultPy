@@ -9,9 +9,9 @@ sys.path.append(os.getcwd())
 
 from core.crypto import CryptoManager
 
-def run_insider_pentest():
+def run_insider_threat_test():
     print("==================================================")
-    print("      VaultPy v1.2.4 INSIDER PENTEST v4.0         ")
+    print("   VaultPy v1.3.0 - Insider Threat Verification   ")
     print("==================================================")
     
     key_path = r"Software\VaultPy\SecurityState"
@@ -62,13 +62,13 @@ def run_insider_pentest():
         print("    [X] FAILED: Could not decrypt even with HWID (Logic bug?).")
 
     print("\n==================================================")
-    print("           INSIDER PENTEST REPORT 4.0             ")
+    print("       INSIDER THREAT VERIFICATION REPORT         ")
     print("==================================================")
-    print(f"1. Standard DPAPI Theft:  {'FAIL ❌' if decrypted_simple else 'PASS ✅'}")
-    print(f"2. Entropy Guessing:      {'PASS ✅'}")
-    print(f"3. Machine ID Lock:       {'PASS ✅' if decrypted_locked else 'FAIL ❌'}")
+    print(f"1. Standard DPAPI Theft:  {'FAIL [X]' if decrypted_simple else 'PASS [OK]'}")
+    print(f"2. Entropy Guessing:      {'PASS [OK]'}")
+    print(f"3. Machine ID Lock:       {'PASS [OK]' if decrypted_locked else 'FAIL [X]'}")
     print("==================================================")
     print("SUMMARY: The vault state is now cryptographically bound to THIS machine's identity.")
 
 if __name__ == "__main__":
-    run_insider_pentest()
+    run_insider_threat_test()

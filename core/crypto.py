@@ -14,7 +14,7 @@ class DATA_BLOB(ctypes.Structure):
 class CryptoManager:
     """Handles encryption, decryption, and key derivation."""
 
-    ITERATIONS = 3
+    ITERATIONS = 10
     MEMORY_COST = 65536
     PARALLELISM = 4
     TAG_SIZE = 16  # bytes
@@ -35,21 +35,56 @@ class CryptoManager:
         )
 
     @staticmethod
-    def encrypt(data: str, key: bytes) -> bytes:
-        """Encrypts data using AES-256-GCM. Returns nonce + ciphertext."""
+    def derive_key_compat(master_password: str, salt: bytes, password_hash: str = None) -> bytes:
+        """
+        Derives a key using the ORIGINAL Argon2 parameters extracted from the stored hash.
+        This ensures backward compatibility when ITERATIONS/MEMORY_COST constants change.
+        Falls back to current constants if hash parsing fails.
+        """
+        t_cost = CryptoManager.ITERATIONS
+        m_cost = CryptoManager.MEMORY_COST
+        p_val = CryptoManager.PARALLELISM
+
+        if password_hash:
+            try:
+                # Argon2 hash format: $argon2id$v=19$m=65536,t=3,p=4$...
+                parts = password_hash.split('$')
+                for part in parts:
+                    if part.startswith('m='):
+                        params = dict(p.split('=') for p in part.split(','))
+                        t_cost = int(params.get('t', t_cost))
+                        m_cost = int(params.get('m', m_cost))
+                        p_val = int(params.get('p', p_val))
+                        break
+            except (ValueError, KeyError, AttributeError):
+                pass  # Use current defaults
+
+        return hash_secret_raw(
+            secret=master_password.encode(),
+            salt=salt,
+            time_cost=t_cost,
+            memory_cost=m_cost,
+            parallelism=p_val,
+            hash_len=CryptoManager.KEY_SIZE,
+            type=Type.ID
+        )
+
+    @staticmethod
+    def encrypt(data: str, key: bytes, aad: bytes = None) -> bytes:
+        """Encrypts data using AES-256-GCM with optional AAD. Returns nonce + ciphertext."""
         aesgcm = AESGCM(key)
         nonce = os.urandom(CryptoManager.NONCE_SIZE)
-        ciphertext = aesgcm.encrypt(nonce, data.encode(), None)
+        ciphertext = aesgcm.encrypt(nonce, data.encode(), aad)
         return nonce + ciphertext
 
     @staticmethod
-    def decrypt(encrypted_data: bytes, key: bytes) -> str:
-        """Decrypts data using AES-256-GCM. Expects nonce + ciphertext."""
+    def decrypt(encrypted_data: bytes, key: bytes, aad: bytes = None) -> str:
+        """Decrypts data using AES-256-GCM with optional AAD. Expects nonce + ciphertext."""
         aesgcm = AESGCM(key)
         nonce = encrypted_data[:CryptoManager.NONCE_SIZE]
         ciphertext = encrypted_data[CryptoManager.NONCE_SIZE:]
         try:
-            decrypted_data = aesgcm.decrypt(nonce, ciphertext, None)
+            decrypted_data = aesgcm.decrypt(nonce, ciphertext, aad)
             return decrypted_data.decode()
         except Exception as e:
             raise ValueError("Decryption failed. Invalid key or corrupted data.") from e
@@ -86,9 +121,44 @@ class CryptoManager:
         return hash_secret_raw(
             secret=phrase.strip().lower().encode(),
             salt=salt,
-            time_cost=CryptoManager.ITERATIONS,
+            time_cost=CryptoManager.ITERATIONS * 2,
             memory_cost=CryptoManager.MEMORY_COST,
             parallelism=CryptoManager.PARALLELISM,
+            hash_len=CryptoManager.KEY_SIZE,
+            type=Type.ID
+        )
+
+    @staticmethod
+    def derive_key_from_phrase_compat(phrase: str, salt: bytes, password_hash: str = None) -> bytes:
+        """
+        Derives a recovery key using the ORIGINAL Argon2 params from the stored hash.
+        v1.2.4 used time_cost=ITERATIONS (no doubling), so we extract 't' directly.
+        Falls back to current constants (with doubling) if parsing fails.
+        """
+        t_cost = CryptoManager.ITERATIONS * 2  # Current default (doubled)
+        m_cost = CryptoManager.MEMORY_COST
+        p_val = CryptoManager.PARALLELISM
+
+        if password_hash:
+            try:
+                parts = password_hash.split('$')
+                for part in parts:
+                    if part.startswith('m='):
+                        params = dict(p.split('=') for p in part.split(','))
+                        # Use the original t value directly (v1.2.4 did NOT double)
+                        t_cost = int(params.get('t', t_cost))
+                        m_cost = int(params.get('m', m_cost))
+                        p_val = int(params.get('p', p_val))
+                        break
+            except (ValueError, KeyError, AttributeError):
+                pass
+
+        return hash_secret_raw(
+            secret=phrase.strip().lower().encode(),
+            salt=salt,
+            time_cost=t_cost,
+            memory_cost=m_cost,
+            parallelism=p_val,
             hash_len=CryptoManager.KEY_SIZE,
             type=Type.ID
         )
@@ -108,12 +178,25 @@ class CryptoManager:
 
     @staticmethod
     def verify_password(password_hash: str, password: str) -> bool:
-        """Verifies a password against an Argon2id hash."""
-        ph = PasswordHasher()
+        """Verifies a password against an Argon2id hash with mandatory throttling."""
+        import time
+        start_time = time.time()
+        
+        ph = PasswordHasher(
+            time_cost=CryptoManager.ITERATIONS,
+            memory_cost=CryptoManager.MEMORY_COST,
+            parallelism=CryptoManager.PARALLELISM
+        )
         try:
             ph.verify(password_hash, password)
+            # Ensure even successful login takes some time to prevent side-channel
+            elapsed = time.time() - start_time
+            if elapsed < 0.3: time.sleep(0.3 - elapsed)
             return True
         except Exception:
+            # Mandatory failure penalty (Penalty for guessing)
+            elapsed = time.time() - start_time
+            if elapsed < 0.5: time.sleep(0.5 - elapsed)
             return False
 
     @staticmethod
@@ -166,7 +249,7 @@ class CryptoManager:
 
     @staticmethod
     def decrypt_dpapi(data: bytes, entropy: bytes = None) -> bytes:
-        """Decrypts data using Windows DPAPI with the same secondary entropy used during encryption."""
+        """Decrypts data using Windows DPAPI."""
         data_in = DATA_BLOB(len(data), ctypes.create_string_buffer(data))
         data_out = DATA_BLOB()
         
@@ -183,3 +266,34 @@ class CryptoManager:
             ctypes.windll.kernel32.LocalFree(data_out.pbData)
             return res
         return b""
+
+    @staticmethod
+    def apply_xor_mask(data: bytearray, session_key: bytes):
+        """Standard XOR-based transformation for buffer masking."""
+        if not session_key: return
+        key_len = len(session_key)
+        for i in range(len(data)):
+            data[i] ^= session_key[i % key_len]
+
+    @staticmethod
+    def lock_memory(buffer):
+        """Locks a buffer in physical RAM using VirtualLock (Anti-Swap)."""
+        try:
+            size = len(buffer)
+            # Use ctypes to get the address of the underlying buffer
+            addr = (ctypes.c_char * size).from_buffer(buffer)
+            if not ctypes.windll.kernel32.VirtualLock(ctypes.byref(addr), size):
+                return False
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def unlock_memory(buffer):
+        """Unlocks a buffer from physical RAM."""
+        try:
+            size = len(buffer)
+            addr = (ctypes.c_char * size).from_buffer(buffer)
+            ctypes.windll.kernel32.VirtualUnlock(ctypes.byref(addr), size)
+        except Exception:
+            pass
