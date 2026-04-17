@@ -1,109 +1,142 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, 
     QLabel, QTextEdit, QFormLayout, QGroupBox, QCheckBox, QSpinBox,
-    QFrame, QProgressBar
+    QFrame, QProgressBar, QWidget, QGraphicsDropShadowEffect
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
-import os
+from PySide6.QtCore import Qt, QPoint, QTimer
+from PySide6.QtGui import QIcon, QColor
 from utils.password_generator import PasswordGenerator
+from ui.theme import MidnightVault
 
 class AddAccountDialog(QDialog):
-    """Dialog for adding or editing an account entry."""
+    """Dialog for adding or editing an account entry (Midnight Vault Edition)."""
 
     def __init__(self, parent=None, account_data=None):
         super().__init__(parent)
         self.account_data = account_data
+        self.drag_pos = QPoint()
+        
+        # Transparent logic for rounded corners
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        
         self.init_ui()
+        self.apply_shadow()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton:
+            self.move(event.globalPos() - self.drag_pos)
+            event.accept()
+
+    def apply_shadow(self):
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setXOffset(0)
+        shadow.setYOffset(10)
+        shadow.setColor(QColor(0, 0, 0, 180))
+        self.container.setGraphicsEffect(shadow)
 
     def init_ui(self):
-        self.setWindowTitle("Add New Account" if not self.account_data else "Edit Account Details")
         self.setFixedWidth(550)
         
-        # Set Window Icon
-        icon_path = os.path.join(os.getcwd(), "assets", "icon.png")
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(15, 15, 15, 15) # Margin for shadow
 
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #11111b;
-                color: #cdd6f4;
-                font-family: 'Segoe UI', sans-serif;
-            }
-            QLabel {
-                font-weight: bold;
-                color: #a6adc8;
-                font-size: 13px;
-            }
-            QLineEdit, QTextEdit, QSpinBox {
-                background-color: #1e1e2e;
-                border: 1px solid #313244;
-                border-radius: 8px;
-                padding: 10px;
-                color: #cdd6f4;
-                font-size: 14px;
-            }
-            QLineEdit:focus, QTextEdit:focus {
-                border-color: #89b4fa;
-            }
-            QPushButton#Primary {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #89b4fa, stop:1 #cba6f7);
-                color: #11111b;
-                font-weight: bold;
-                padding: 12px;
-                border-radius: 8px;
-                min-width: 120px;
-            }
-            QPushButton#Secondary {
-                background-color: #313244;
-                color: #cdd6f4;
-                border-radius: 8px;
-                padding: 12px;
-            }
-            QPushButton#Secondary:hover {
-                background-color: #45475a;
-            }
-            QPushButton#Tertiary {
-                background-color: transparent;
-                border: 1px solid #45475a;
-                color: #89b4fa;
-                border-radius: 6px;
-                padding: 6px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-            QPushButton#Tertiary:hover {
-                background-color: #313244;
-                border-color: #89b4fa;
-            }
-            QGroupBox {
-                border: 1px solid #313244;
-                border-radius: 10px;
+        self.container = QFrame()
+        self.container.setObjectName("DialogContainer")
+        self.container_layout = QVBoxLayout(self.container)
+        self.container_layout.setContentsMargins(30, 30, 30, 30)
+        self.container_layout.setSpacing(15)
+
+        self.setStyleSheet(f"""
+            QFrame#DialogContainer {{
+                background-color: {MidnightVault.BG_SECONDARY};
+                border: 1px solid {MidnightVault.BORDER};
+                border-radius: 20px;
+                color: {MidnightVault.TEXT_PRIMARY};
+            }}
+            QWidget {{
+                font-family: 'Inter', 'Segoe UI', sans-serif;
+            }}
+            QGroupBox {{
+                background-color: {MidnightVault.BG_PRIMARY};
+                border: 1px solid {MidnightVault.BORDER};
+                border-radius: 12px;
                 margin-top: 20px;
                 padding-top: 20px;
-                color: #89b4fa;
-                font-weight: bold;
-            }
-            QCheckBox {
-                spacing: 10px;
-                color: #cdd6f4;
-            }
-            QProgressBar {
-                background-color: #313244;
-                border-radius: 4px;
+                color: {MidnightVault.ACCENT_PRIMARY};
+                font-weight: 600;
+            }}
+            QLabel {{
+                font-weight: 600;
+                color: {MidnightVault.TEXT_SECONDARY};
+                font-size: 13px;
+                background: transparent;
+            }}
+            QLineEdit, QTextEdit, QSpinBox {{
+                background-color: {MidnightVault.BG_ELEVATED};
+                border: 1.5px solid {MidnightVault.BORDER};
+                border-radius: 10px;
+                padding: 10px;
+                color: {MidnightVault.TEXT_PRIMARY};
+                font-size: 14px;
+            }}
+            QLineEdit:focus, QTextEdit:focus {{
+                border-color: {MidnightVault.ACCENT_PRIMARY};
+            }}
+            QPushButton#Primary {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {MidnightVault.ACCENT_PRIMARY}, stop:1 {MidnightVault.ACCENT_SECONDARY});
+                color: #ffffff;
+                font-weight: 600;
+                padding: 12px;
+                border-radius: 10px;
+                min-width: 120px;
+            }}
+            QPushButton#Secondary {{
+                background-color: {MidnightVault.BG_ELEVATED};
+                color: {MidnightVault.TEXT_PRIMARY};
+                border-radius: 10px;
+                padding: 12px;
+                border: 1px solid {MidnightVault.BORDER};
+            }}
+            QPushButton#Secondary:hover {{
+                background-color: {MidnightVault.BORDER};
+            }}
+            QPushButton#Tertiary {{
+                background-color: transparent;
+                border: 1px solid {MidnightVault.BORDER};
+                color: {MidnightVault.ACCENT_PRIMARY};
+                border-radius: 8px;
+                padding: 6px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton#Tertiary:hover {{
+                background-color: {MidnightVault.BG_ELEVATED};
+                border-color: {MidnightVault.ACCENT_PRIMARY};
+            }}
+            QCheckBox {{
+                spacing: 12px;
+                color: {MidnightVault.TEXT_PRIMARY};
+            }}
+            QProgressBar {{
+                background-color: {MidnightVault.BORDER};
+                border-radius: 3px;
                 text-align: center;
                 height: 6px;
                 border: none;
-            }
-            QProgressBar::chunk {
-                border-radius: 4px;
-            }
+            }}
+            QProgressBar::chunk {{
+                border-radius: 3px;
+            }}
         """)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 30, 30, 30)
-        layout.setSpacing(15)
+        self.layout.addWidget(self.container)
 
         form = QFormLayout()
         form.setVerticalSpacing(15)
@@ -116,6 +149,10 @@ class AddAccountDialog(QDialog):
         self.username_input = QLineEdit()
         self.username_input.setPlaceholderText("Email or Username")
         form.addRow("👤 User / Email:", self.username_input)
+
+        self.folder_input = QLineEdit()
+        self.folder_input.setPlaceholderText("e.g., Work, Personal, Social")
+        form.addRow("📁 Folder:", self.folder_input)
 
         # Password with Generator
         pass_wrapper = QVBoxLayout()
@@ -179,8 +216,8 @@ class AddAccountDialog(QDialog):
         do_gen_btn.clicked.connect(self.apply_generated)
         gen_form.addRow(do_gen_btn)
         
-        layout.addLayout(form)
-        layout.addWidget(self.gen_group)
+        self.container_layout.addLayout(form)
+        self.container_layout.addWidget(self.gen_group)
 
         self.totp_input = QLineEdit()
         self.totp_input.setPlaceholderText("Base32 Key (optional)")
@@ -191,7 +228,7 @@ class AddAccountDialog(QDialog):
         self.notes_input.setMaximumHeight(80)
         form.addRow("📝 Notes:", self.notes_input)
 
-        layout.addSpacing(10)
+        self.container_layout.addSpacing(10)
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -210,7 +247,7 @@ class AddAccountDialog(QDialog):
         btn_layout.addStretch()
         btn_layout.addWidget(cancel_btn)
         btn_layout.addWidget(save_btn)
-        layout.addLayout(btn_layout)
+        self.container_layout.addLayout(btn_layout)
 
     def show_generator_options(self):
         visible = self.gen_group.isVisible()
@@ -284,5 +321,6 @@ class AddAccountDialog(QDialog):
             "username": self.username_input.text(),
             "password": self.password_input.text(),
             "totp": totp_clean,
+            "folder": self.folder_input.text(),
             "notes": self.notes_input.toPlainText()
         }

@@ -8,8 +8,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 
+from ui.theme import MidnightVault
+
 class RecoverySetupDialog(QDialog):
-    """Wizard to guide the user through Phrase and TOTP setup."""
+    """Wizard to guide the user through Phrase and TOTP setup (Midnight Vault Edition)."""
     
     def __init__(self, phrase, totp_uri, totp_secret, parent=None, is_migration=False):
         super().__init__(parent)
@@ -18,37 +20,48 @@ class RecoverySetupDialog(QDialog):
         self.totp_secret = totp_secret
         self.is_migration = is_migration
         
-        self.setWindowTitle("Security Setup: 2-Step Recovery")
-        self.setFixedSize(500, 550)
+        self.setWindowTitle("Security Setup")
+        self.setFixedSize(500, 580)
+        
+        # Frameless logic for a consistent feel
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        
         self.init_ui()
 
     def init_ui(self):
         self.layout = QVBoxLayout(self)
-        self.setStyleSheet("""
-            QDialog { background-color: #0b0b10; }
-            QLabel { color: #cdd6f4; font-family: 'Segoe UI', sans-serif; }
-            QTextEdit {
-                background-color: #11111b;
-                border: 2px solid #fab387;
-                border-radius: 10px;
-                color: #fab387;
-                font-family: 'Consolas', monospace;
-                font-size: 15px;
-                padding: 10px;
-            }
-            QPushButton {
-                background-color: #fab387;
-                color: #11111b;
-                border-radius: 8px;
-                padding: 12px;
-                font-weight: bold;
+        self.setStyleSheet(f"""
+            QDialog {{ 
+                background-color: {MidnightVault.BG_SECONDARY}; 
+                border: 1px solid {MidnightVault.BORDER};
+                border-radius: 20px;
+            }}
+            QLabel {{ color: {MidnightVault.TEXT_PRIMARY}; font-family: 'Inter', sans-serif; }}
+            QTextEdit {{
+                background-color: {MidnightVault.BG_PRIMARY};
+                border: 1.5px solid {MidnightVault.WARNING};
+                border-radius: 12px;
+                color: {MidnightVault.WARNING};
+                font-family: 'JetBrains Mono', 'Consolas', monospace;
                 font-size: 14px;
-            }
-            QPushButton:hover { background-color: #f9e2af; }
-            QPushButton#Secondary {
-                background-color: #313244;
-                color: #cdd6f4;
-            }
+                padding: 15px;
+            }}
+            QPushButton {{
+                background-color: {MidnightVault.ACCENT_PRIMARY};
+                color: #ffffff;
+                border-radius: 10px;
+                padding: 12px;
+                font-weight: 600;
+                font-size: 14px;
+                border: none;
+            }}
+            QPushButton:hover {{ background-color: {MidnightVault.ACCENT_SECONDARY}; }}
+            QPushButton#Secondary {{
+                background-color: {MidnightVault.BG_ELEVATED};
+                color: {MidnightVault.TEXT_PRIMARY};
+                border: 1px solid {MidnightVault.BORDER};
+            }}
         """)
 
         self.stack = QStackedWidget()

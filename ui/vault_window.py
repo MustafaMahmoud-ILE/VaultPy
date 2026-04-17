@@ -16,9 +16,10 @@ from core.totp import TOTPManager
 from utils.clipboard import ClipboardManager
 from ui.add_account_dialog import AddAccountDialog
 from ui.components.title_bar import CustomTitleBar
+from ui.theme import MidnightVault
 
 class VaultWindow(QWidget):
-    """Main application window displaying the password vault (Frameless)."""
+    """Main application window displaying the password vault (Midnight Vault Edition)."""
     
     lock_requested = Signal()
     update_check_requested = Signal()
@@ -39,6 +40,7 @@ class VaultWindow(QWidget):
         self.setFixedSize(1100, 800)
         
         self.init_ui()
+        self.refresh_folders()
         self.refresh_accounts()
         self.apply_fade_in()
 
@@ -52,105 +54,127 @@ class VaultWindow(QWidget):
             self.idle_filter.second_passed.connect(self.update_idle_label)
 
     def init_ui(self):
-        self.setStyleSheet("""
-            QWidget {
-                font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            }
-            QFrame#MainContainer {
-                background-color: #0b0b10;
-                border-radius: 15px;
-                border: 2px solid #45475a;
-            }
-            QLineEdit#SearchInput {
-                background-color: #11111b;
-                border: 1.5px solid #45475a;
-                border-radius: 10px;
-                padding: 12px;
+        self.setStyleSheet(f"""
+            QWidget {{
+                font-family: 'Inter', 'Segoe UI', sans-serif;
+            }}
+            QFrame#MainContainer {{
+                background-color: {MidnightVault.BG_PRIMARY};
+                border-radius: 16px;
+                border: 1px solid {MidnightVault.BORDER};
+            }}
+            QLineEdit#SearchInput {{
+                background-color: {MidnightVault.BG_ELEVATED};
+                border: 1.5px solid {MidnightVault.BORDER};
+                border-radius: 12px;
+                padding: 12px 16px;
                 font-size: 14px;
                 margin: 15px;
-                color: #ffffff;
-            }
-            QLineEdit#SearchInput:focus {
-                border-color: #89b4fa;
-            }
-            QListWidget {
+                color: {MidnightVault.TEXT_PRIMARY};
+            }}
+            QLineEdit#SearchInput:focus {{
+                border-color: {MidnightVault.ACCENT_PRIMARY};
+            }}
+            QListWidget {{
                 border: none;
-                background-color: #0b0b10;
-                outline: none;
-                padding: 10px;
-                color: #ffffff;
-            }
-            QListWidget::item {
-                background-color: #11111b;
-                border-radius: 12px;
-                padding: 18px;
-                margin-bottom: 10px;
-                border: 1px solid #313244;
-            }
-            QListWidget::item:hover {
-                background-color: #181825;
-                border: 1px solid #45475a;
-            }
-            QListWidget::item:selected {
-                background-color: #1e1e2e;
-                border: 2px solid #89b4fa;
-                color: #89b4fa;
-            }
-            QPushButton#ActionBtn {
-                background-color: #181825;
-                color: #ffffff;
-                border-radius: 8px;
-                padding: 10px 18px;
-                font-weight: bold;
-                border: 1.5px solid #45475a;
-            }
-            QPushButton#ActionBtn:hover {
-                background-color: #313244;
-                border-color: #89b4fa;
-            }
-            QPushButton#AccentBtn {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #89b4fa, stop:1 #cba6f7);
-                color: #000000;
-                border-radius: 8px;
-                padding: 10px 20px;
-                font-weight: bold;
-            }
-            QPushButton#DangerBtn {
                 background-color: transparent;
-                color: #f38ba8;
-                border: 2px solid #f38ba8;
-                border-radius: 8px;
+                outline: none;
+                padding: 5px;
+            }}
+            QListWidget#AccountList::item {{
+                background-color: {MidnightVault.BG_SECONDARY};
+                border-radius: 12px;
+                padding: 15px;
+                margin-bottom: 8px;
+                border: 1px solid {MidnightVault.BORDER};
+                color: {MidnightVault.TEXT_PRIMARY};
+                min-height: 72px;
+            }}
+            QListWidget#AccountList::item:hover {{
+                background-color: {MidnightVault.BG_ELEVATED};
+                border: 1px solid {MidnightVault.BORDER};
+            }}
+            QListWidget#AccountList::item:selected {{
+                background-color: {MidnightVault.BG_ELEVATED};
+                border: 2px solid {MidnightVault.ACCENT_PRIMARY};
+                color: {MidnightVault.ACCENT_PRIMARY};
+            }}
+            QPushButton#ActionBtn {{
+                background-color: {MidnightVault.BG_ELEVATED};
+                color: {MidnightVault.TEXT_PRIMARY};
+                border-radius: 10px;
                 padding: 10px 18px;
-                font-weight: bold;
-            }
-            QPushButton#DangerBtn:hover {
-                background-color: #f38ba8;
-                color: #000000;
-            }
-            QFrame#DetailsPanel {
-                background-color: #11111b;
-                border-left: 2px solid #313244;
-                border-bottom-right-radius: 15px;
-            }
-            QLabel#DetailHeader {
-                font-size: 28px;
-                font-weight: bold;
-                color: #89b4fa;
+                font-weight: 600;
+                border: 1px solid {MidnightVault.BORDER};
+            }}
+            QPushButton#ActionBtn:hover {{
+                background-color: {MidnightVault.BORDER};
+                border-color: {MidnightVault.ACCENT_PRIMARY};
+            }}
+            QPushButton#AccentBtn {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {MidnightVault.ACCENT_PRIMARY}, stop:1 {MidnightVault.ACCENT_SECONDARY});
+                color: #ffffff;
+                border-radius: 10px;
+                padding: 10px 20px;
+                font-weight: 600;
+            }}
+            QPushButton#DangerBtn {{
+                background-color: rgba(247, 118, 142, 0.1);
+                color: {MidnightVault.DANGER};
+                border: 1px solid {MidnightVault.DANGER};
+                border-radius: 10px;
+                padding: 10px 18px;
+                font-weight: 600;
+            }}
+            QPushButton#DangerBtn:hover {{
+                background-color: {MidnightVault.DANGER};
+                color: #ffffff;
+            }}
+            QFrame#DetailsPanel {{
+                background-color: {MidnightVault.BG_SECONDARY};
+                border-left: 1px solid {MidnightVault.BORDER};
+            }}
+            QLabel#DetailHeader {{
+                font-size: 32px;
+                font-weight: 700;
+                color: {MidnightVault.ACCENT_PRIMARY};
                 margin-bottom: 25px;
-            }
-            QLabel#DetailLabel {
-                color: #bac2de;
+                letter-spacing: -0.5px;
+            }}
+            QLabel#DetailLabel {{
+                color: {MidnightVault.TEXT_SECONDARY};
                 font-size: 11px;
-                font-weight: bold;
+                font-weight: 600;
                 text-transform: uppercase;
                 letter-spacing: 1px;
-            }
-            QLabel#DetailValue {
+            }}
+            QLabel#DetailValue {{
                 font-size: 17px;
-                margin-bottom: 20px;
                 padding: 5px 0;
-                color: #ffffff;
-            }
+                color: {MidnightVault.TEXT_PRIMARY};
+            }}
+            QListWidget#FolderSidebar {{
+                background-color: {MidnightVault.BG_PRIMARY};
+                border-right: 1px solid {MidnightVault.BORDER};
+                padding: 10px;
+                color: {MidnightVault.TEXT_SECONDARY};
+            }}
+            QListWidget#FolderSidebar::item {{
+                border-radius: 8px;
+                padding: 10px 12px;
+                margin-bottom: 4px;
+                font-size: 13px;
+                font-weight: 600;
+            }}
+            QListWidget#FolderSidebar::item:hover {{
+                background-color: {MidnightVault.BG_ELEVATED};
+                color: {MidnightVault.TEXT_PRIMARY};
+            }}
+            QListWidget#FolderSidebar::item:selected {{
+                background-color: rgba(122, 162, 247, 0.15);
+                color: {MidnightVault.ACCENT_PRIMARY};
+                border-left: 3px solid {MidnightVault.ACCENT_PRIMARY};
+            }}
         """)
 
         # Main Layout
@@ -168,13 +192,19 @@ class VaultWindow(QWidget):
         self.title_bar.close_clicked.connect(self.close)
         self.title_bar.minimize_clicked.connect(self.showMinimized)
         self.container_layout.addWidget(self.title_bar)
-
         # 2. Body Content
         self.body_widget = QWidget()
         self.body_layout = QHBoxLayout(self.body_widget)
         self.body_layout.setContentsMargins(0, 0, 0, 0)
         self.body_layout.setSpacing(0)
 
+        # 0. Folders Sidebar (Leftmost)
+        self.folder_sidebar = QListWidget()
+        self.folder_sidebar.setObjectName("FolderSidebar")
+        self.folder_sidebar.setFixedWidth(200)
+        self.folder_sidebar.itemSelectionChanged.connect(self.refresh_accounts)
+        self.body_layout.addWidget(self.folder_sidebar)
+        
         # Left Column: List and Search
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
@@ -200,6 +230,7 @@ class VaultWindow(QWidget):
         left_layout.addLayout(search_layout)
 
         self.account_list = QListWidget()
+        self.account_list.setObjectName("AccountList")
         self.account_list.itemSelectionChanged.connect(self.on_account_selected)
         left_layout.addWidget(self.account_list)
 
@@ -403,13 +434,55 @@ class VaultWindow(QWidget):
             else:
                 self.clear_layout(item.layout())
 
+    def refresh_folders(self):
+        """Populates the sidebar with unique folders from the database."""
+        current_selection = self.folder_sidebar.currentItem().text() if self.folder_sidebar.currentItem() else "📁 All Accounts"
+        self.folder_sidebar.clear()
+        
+        folders = self.db.get_all_folders()
+        all_item = QListWidgetItem("📁 All Accounts")
+        self.folder_sidebar.addItem(all_item)
+        
+        has_uncategorized = False
+        for folder in folders:
+            if not folder:
+                has_uncategorized = True
+                continue
+            item = QListWidgetItem(f"📁 {folder}")
+            self.folder_sidebar.addItem(item)
+            if f"📁 {folder}" == current_selection:
+                self.folder_sidebar.setCurrentItem(item)
+                
+        if has_uncategorized:
+            item = QListWidgetItem("📁 Uncategorized")
+            self.folder_sidebar.addItem(item)
+            if "📁 Uncategorized" == current_selection:
+                self.folder_sidebar.setCurrentItem(item)
+
+        if not self.folder_sidebar.currentItem():
+            self.folder_sidebar.setCurrentItem(all_item)
+
     def refresh_accounts(self):
         query = self.search_input.text()
         if query.startswith("🔍 "): query = query[2:]
+        
+        # Folder Filtering
+        selected_folder_item = self.folder_sidebar.currentItem()
+        folder_filter = selected_folder_item.text() if selected_folder_item else "📁 All Accounts"
+        
         accounts = self.db.search_accounts(query) if query else self.db.get_all_accounts()
+        
+        if folder_filter == "📁 Uncategorized":
+            accounts = [acc for acc in accounts if not acc.folder]
+        elif folder_filter != "📁 All Accounts":
+            folder_name = folder_filter[2:]
+            accounts = [acc for acc in accounts if acc.folder == folder_name]
+
         self.account_list.clear()
         for acc in accounts:
-            item = QListWidgetItem(f"{acc.service} | {acc.username}")
+            # Multi-line item text
+            display_text = f"{acc.service}\n{acc.username}"
+            item = QListWidgetItem(display_text)
             item.setData(Qt.UserRole, acc)
             self.account_list.addItem(item)
 
@@ -429,6 +502,10 @@ class VaultWindow(QWidget):
         header = QLabel(service)
         header.setObjectName("DetailHeader")
         self.details_layout.addWidget(header)
+        
+        if acc.folder:
+            self.add_detail_to_layout("📁 Folder", acc.folder)
+            
         self.add_detail_to_layout("👤 Username", username, copy_text=username)
         try:
             password = CryptoManager.decrypt(acc.password_encrypted, self.auth.get_key())
@@ -453,7 +530,7 @@ class VaultWindow(QWidget):
         delete_btn = QPushButton("🗑️ Delete")
         delete_btn.setObjectName("DangerBtn")
         delete_btn.setMinimumHeight(45)
-        delete_btn.clicked.connect(lambda: self.delete_account(acc[0]))
+        delete_btn.clicked.connect(lambda: self.delete_account(acc.id))
         actions_layout.addWidget(edit_btn, 1)
         actions_layout.addWidget(delete_btn, 1)
         self.details_layout.addLayout(actions_layout)
@@ -480,8 +557,10 @@ class VaultWindow(QWidget):
                 txt = copy_text or (self.totp_val_label.text().split(" ")[0] if self.totp_val_label else "")
                 if txt:
                     ClipboardManager.copy(txt)
-                    btn.setText("✅ Copied")
+                    btn.setText("✓ Copied!")
+                    btn.setStyleSheet(f"background-color: {MidnightVault.SUCCESS}; color: #ffffff; font-size: 11px; padding: 6px; border-radius: 6px;")
                     QTimer.singleShot(2000, lambda: btn.setText("📋 Copy"))
+                    QTimer.singleShot(2000, lambda: btn.setStyleSheet("font-size: 11px; padding: 6px; border-radius: 6px;"))
             btn.clicked.connect(do_copy)
             val_layout.addWidget(btn)
         self.details_layout.addLayout(val_layout)
@@ -494,8 +573,12 @@ class VaultWindow(QWidget):
             code = TOTPManager.get_otp(totp_secret)
             remaining = TOTPManager.get_remaining_time()
             self.totp_val_label.setText(f"{code}  ({remaining}s)")
-            if remaining < 5: self.totp_val_label.setStyleSheet("font-size: 26px; color: #f38ba8; font-weight: bold; font-family: 'Consolas', monospace;")
-            else: self.totp_val_label.setStyleSheet("font-size: 26px; color: #fab387; font-weight: bold; font-family: 'Consolas', monospace;")
+            
+            base_style = f"font-size: 32px; font-weight: 700; font-family: 'JetBrains Mono', 'Consolas', monospace; padding: 10px;"
+            if remaining < 5: 
+                self.totp_val_label.setStyleSheet(f"{base_style} color: {MidnightVault.DANGER};")
+            else: 
+                self.totp_val_label.setStyleSheet(f"{base_style} color: {MidnightVault.INFO};")
         except Exception: pass
 
     def show_add_dialog(self):
@@ -504,7 +587,15 @@ class VaultWindow(QWidget):
             data = self.active_dialog.get_data()
             try:
                 key = self.auth.get_key()
-                self.db.add_account(data['service'], data['username'], CryptoManager.encrypt(data['password'], key), CryptoManager.encrypt(data['totp'], key) if data['totp'] else None, CryptoManager.encrypt(data['notes'], key) if data['notes'] else None)
+                self.db.add_account(
+                    data['service'], 
+                    data['username'], 
+                    CryptoManager.encrypt(data['password'], key), 
+                    CryptoManager.encrypt(data['totp'], key) if data['totp'] else None, 
+                    CryptoManager.encrypt(data['notes'], key) if data['notes'] else None,
+                    data['folder']
+                )
+                self.refresh_folders()
                 self.refresh_accounts()
             except Exception as e: QMessageBox.critical(self, "Error", f"Failed to save account: {e}")
         self.active_dialog = None
@@ -519,9 +610,19 @@ class VaultWindow(QWidget):
             dialog.password_input.setText(CryptoManager.decrypt(acc.password_encrypted, key))
             dialog.totp_input.setText(CryptoManager.decrypt(acc.totp_secret_encrypted, key) if acc.totp_secret_encrypted else "")
             dialog.notes_input.setText(CryptoManager.decrypt(acc.notes_encrypted, key) if acc.notes_encrypted else "")
+            dialog.folder_input.setText(acc.folder if acc.folder else "")
             if dialog.exec():
                 new_data = dialog.get_data()
-                self.db.update_account(acc.id, new_data['service'], new_data['username'], CryptoManager.encrypt(new_data['password'], key), CryptoManager.encrypt(new_data['totp'], key) if new_data['totp'] else None, CryptoManager.encrypt(new_data['notes'], key) if new_data['notes'] else None)
+                self.db.update_account(
+                    acc.id, 
+                    new_data['service'], 
+                    new_data['username'], 
+                    CryptoManager.encrypt(new_data['password'], key), 
+                    CryptoManager.encrypt(new_data['totp'], key) if new_data['totp'] else None, 
+                    CryptoManager.encrypt(new_data['notes'], key) if new_data['notes'] else None,
+                    new_data['folder']
+                )
+                self.refresh_folders()
                 self.refresh_accounts()
                 self.on_account_selected()
         except Exception as e: QMessageBox.critical(self, "Error", f"Failed to edit account: {e}")
@@ -530,6 +631,7 @@ class VaultWindow(QWidget):
     def delete_account(self, acc_id):
         if QMessageBox.question(self, "Confirm Delete", "Are you sure you want to delete this account?", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
             self.db.delete_account(acc_id)
+            self.refresh_folders()
             self.refresh_accounts()
             self.setup_details_placeholder()
 

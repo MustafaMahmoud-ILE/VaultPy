@@ -11,8 +11,10 @@ from core.auth import AuthManager
 from ui.components.title_bar import CustomTitleBar
 from ui.recovery_setup_dialog import RecoverySetupDialog
 
+from ui.theme import MidnightVault
+
 class LoginWindow(QWidget):
-    """Window for master password setup and login (Frameless)."""
+    """Window for master password setup and login (Midnight Vault Edition)."""
     
     login_success = Signal()
 
@@ -23,79 +25,78 @@ class LoginWindow(QWidget):
         # Frameless & Translucent State
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(450, 680) # Increased height for recovery link
+        self.setFixedSize(450, 680)
         
         self.init_ui()
         self.apply_fade_in()
 
     def init_ui(self):
         # Global Style
-        self.setStyleSheet("""
-            QWidget {
-                font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            }
-            QFrame#MainContainer {
-                background-color: #0b0b10;
-                border-radius: 15px;
-                border: 2px solid #45475a;
-            }
-            QFrame#LoginCard {
-                background-color: #11111b;
+        self.setStyleSheet(f"""
+            QWidget {{
+                font-family: 'Inter', 'Segoe UI', sans-serif;
+            }}
+            QFrame#MainContainer {{
+                background-color: {MidnightVault.BG_PRIMARY};
+                border-radius: 16px;
+                border: 1px solid {MidnightVault.BORDER};
+            }}
+            QFrame#LoginCard {{
+                background-color: {MidnightVault.BG_SECONDARY};
                 border-radius: 20px;
-                border: 1px solid #45475a;
-            }
-            QLabel#Subtitle {
+                border: 1px solid {MidnightVault.BORDER};
+            }}
+            QLabel#Subtitle {{
                 font-size: 14px;
-                color: #bac2de;
+                color: {MidnightVault.TEXT_SECONDARY};
                 margin-bottom: 20px;
-            }
-            QLineEdit {
-                background-color: #181825;
-                border: 1.5px solid #45475a;
+            }}
+            QLineEdit {{
+                background-color: {MidnightVault.BG_ELEVATED};
+                border: 1.5px solid {MidnightVault.BORDER};
                 border-radius: 10px;
                 padding: 15px;
                 font-size: 15px;
+                color: {MidnightVault.TEXT_PRIMARY};
+            }}
+            QLineEdit:focus {{
+                border: 1.5px solid {MidnightVault.ACCENT_PRIMARY};
+            }}
+            QPushButton#PrimaryAction {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {MidnightVault.ACCENT_PRIMARY}, stop:1 {MidnightVault.ACCENT_SECONDARY});
                 color: #ffffff;
-            }
-            QLineEdit:focus {
-                border: 1.5px solid #89b4fa;
-            }
-            QPushButton#PrimaryAction {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #89b4fa, stop:1 #cba6f7);
-                color: #000000;
                 border-radius: 10px;
                 padding: 15px;
                 font-size: 16px;
-                font-weight: bold;
-            }
-            QPushButton#PrimaryAction:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #b4befe, stop:1 #f5c2e7);
-            }
-            QPushButton#ResetLink {
-                color: #585b70;
-                text-decoration: underline;
+                font-weight: 600;
+            }}
+            QPushButton#PrimaryAction:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {MidnightVault.ACCENT_PRIMARY}, stop:1 {MidnightVault.ACCENT_SECONDARY});
+                border: 1px solid #ffffff;
+            }}
+            QPushButton#ResetLink {{
+                color: {MidnightVault.TEXT_TERTIARY};
                 background: transparent;
                 border: none;
                 font-size: 12px;
                 margin-top: 5px;
-            }
-            QPushButton#RecoveryLink {
-                color: #fab387;
+            }}
+            QPushButton#RecoveryLink {{
+                color: {MidnightVault.WARNING};
                 text-decoration: underline;
                 background: transparent;
                 border: none;
                 font-size: 13px;
                 font-weight: bold;
                 margin-top: 15px;
-            }
-            QPushButton#ImportLink {
-                color: #89b4fa;
-                text-decoration: underline;
+            }}
+            QPushButton#ImportLink {{
+                color: {MidnightVault.ACCENT_PRIMARY};
                 background: transparent;
                 border: none;
                 font-size: 12px;
                 margin-top: 5px;
-            }
+            }}
         """)
 
         # Main Layout (containing the rounded container)

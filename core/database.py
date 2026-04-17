@@ -168,6 +168,7 @@ class DatabaseManager:
                     password_encrypted BLOB NOT NULL,
                     totp_secret_encrypted BLOB,
                     notes_encrypted BLOB,
+                    folder TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -181,6 +182,12 @@ class DatabaseManager:
                 cursor.execute("ALTER TABLE meta ADD COLUMN failed_attempts INTEGER DEFAULT 0")
             if 'integrity_signature' not in columns:
                 cursor.execute("ALTER TABLE meta ADD COLUMN integrity_signature BLOB")
+
+            # Migration for accounts table
+            cursor.execute("PRAGMA table_info(accounts)")
+            acc_columns = [info[1] for info in cursor.fetchall()]
+            if 'folder' not in acc_columns:
+                cursor.execute("ALTER TABLE accounts ADD COLUMN folder TEXT")
                 
             self._ensure_integrity(cursor)
             conn.commit()
@@ -354,12 +361,12 @@ class DatabaseManager:
             print(f"[SECURITY] Registry state corrupted or tampered: {type(e).__name__}")
             return {"AuditCount": 999, "LastMTime": 0.0}
 
-    def add_account(self, service, username, password_enc, totp_enc=None, notes_enc=None):
+    def add_account(self, service, username, password_enc, totp_enc=None, notes_enc=None, folder=None):
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO accounts (service, username, password_encrypted, totp_secret_encrypted, notes_encrypted) VALUES (?, ?, ?, ?, ?)",
-                (service, username, password_enc, totp_enc, notes_enc)
+                "INSERT INTO accounts (service, username, password_encrypted, totp_secret_encrypted, notes_encrypted, folder) VALUES (?, ?, ?, ?, ?, ?)",
+                (service, username, password_enc, totp_enc, notes_enc, folder)
             )
             conn.commit()
 
@@ -394,7 +401,7 @@ class DatabaseManager:
         from models.account import Account
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, service, username, password_encrypted, totp_secret_encrypted, notes_encrypted, created_at FROM accounts")
+            cursor.execute("SELECT id, service, username, password_encrypted, totp_secret_encrypted, notes_encrypted, folder, created_at FROM accounts")
             return [Account(*row) for row in cursor.fetchall()]
 
     def search_accounts(self, query):
@@ -403,20 +410,27 @@ class DatabaseManager:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, service, username, password_encrypted, totp_secret_encrypted, notes_encrypted, created_at FROM accounts WHERE service LIKE ? OR username LIKE ?",
+                "SELECT id, service, username, password_encrypted, totp_secret_encrypted, notes_encrypted, folder, created_at FROM accounts WHERE service LIKE ? OR username LIKE ?",
                 (f"%{query}%", f"%{query}%")
             )
             return [Account(*row) for row in cursor.fetchall()]
 
-    def update_account(self, account_id, service, username, password_enc, totp_enc=None, notes_enc=None):
+    def update_account(self, account_id, service, username, password_enc, totp_enc=None, notes_enc=None, folder=None):
         """Updates an existing account entry."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE accounts SET service = ?, username = ?, password_encrypted = ?, totp_secret_encrypted = ?, notes_encrypted = ? WHERE id = ?",
-                (service, username, password_enc, totp_enc, notes_enc, account_id)
+                "UPDATE accounts SET service = ?, username = ?, password_encrypted = ?, totp_secret_encrypted = ?, notes_encrypted = ?, folder = ? WHERE id = ?",
+                (service, username, password_enc, totp_enc, notes_enc, folder, account_id)
             )
             conn.commit()
+
+    def get_all_folders(self):
+        """Retrieves a list of all unique folder names defined in the vault."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT folder FROM accounts WHERE folder IS NOT NULL AND folder != ''")
+            return [row[0] for row in cursor.fetchall()]
 
     def factory_reset(self):
         """Permanently wipes all vault data and resets security state."""

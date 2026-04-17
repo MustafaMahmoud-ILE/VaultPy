@@ -11,6 +11,7 @@ class Account:
     password_encrypted: bytes
     totp_secret_encrypted: Optional[bytes] = None
     notes_encrypted: Optional[bytes] = None
+    folder: Optional[str] = None
     created_at: Optional[str] = None
 
     def __repr__(self):
