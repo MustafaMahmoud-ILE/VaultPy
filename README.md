@@ -1,7 +1,7 @@
 # VaultPy 🔐
 
 <p align="center">
-  <img src="assets/hero.png" width="100%" alt="VaultPy Hero Image">
+  <img src="assets/hero.png?v=1.4.0" width="100%" alt="VaultPy Hero Image">
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 *The first line of defense. A minimalist, high-contrast entry point that welcomes you to your vault.*
 
 <p align="center">
-  <img src="assets/login_preview.png" width="80%" alt="Login Screen">
+  <img src="assets/login_preview.png?v=1.4.1" width="80%" alt="Login Screen">
 </p>
 
 ---
@@ -33,7 +33,7 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 *Your secure repository. Clean organization with real-time TOTP generation and searchable accounts.*
 
 <p align="center">
-  <img src="assets/vault_preview.png" width="90%" alt="Vault Screen">
+  <img src="assets/vault_preview.png?v=1.4.1" width="90%" alt="Vault Screen">
 </p>
 
 ---
@@ -42,7 +42,7 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 *Real-time security feedback. Visual indicators help you choose strong, entropy-rich passwords for every account.*
 
 <p align="center">
-  <img src="assets/strength_meter_preview.png" width="70%" alt="Strength Meter Screen">
+  <img src="assets/strength_meter_preview.png?v=1.4.0" width="70%" alt="Strength Meter Screen">
 </p>
 
 ---

@@ -84,7 +84,8 @@ def capture_screenshot():
             # Capture Vault
             screenshot_vault = vault_win.grab()
             screenshot_vault.save(os.path.join(assets_dir, "vault_preview.png"))
-            print("Success: Captured vault_preview.png")
+            screenshot_vault.save(os.path.join(assets_dir, "hero.png")) # Also update Hero
+            print("Success: Captured vault_preview.png and hero.png")
             
             app.quit()
             
