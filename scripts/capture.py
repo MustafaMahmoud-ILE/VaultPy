@@ -45,16 +45,24 @@ def capture_screenshot():
         
         # Add some mock items for the list
         mock_accounts = [
-            Account(1, "Google", "mustafa@gmail.com", b"enc", b"enc", b"enc"),
-            Account(2, "GitHub", "MustafaMahmoud", b"enc", b"enc", b"enc"),
-            Account(3, "Facebook", "mustafa_dev", b"enc", b"enc", b"enc")
+            Account(1, "Google", "mustafa@gmail.com", b"enc", b"enc", b"enc", folder="Personal"),
+            Account(2, "GitHub", "MustafaMahmoud", b"enc", b"enc", b"enc", folder="Work"),
+            Account(3, "Facebook", "mustafa_dev", b"enc", b"enc", b"enc", folder="Social")
         ]
         
-        # Populate the list widget directly for the shot
+        # Populate folders
+        vault_win.folder_sidebar.addItem("📁 All Accounts")
+        vault_win.folder_sidebar.addItem("📁 Personal")
+        vault_win.folder_sidebar.addItem("📁 Work")
+        vault_win.folder_sidebar.addItem("📁 Social")
+        vault_win.folder_sidebar.setCurrentRow(0)
+
+        # Populate the list widget with the new multi-line format
         from PySide6.QtWidgets import QListWidgetItem
         from PySide6.QtCore import Qt
         for acc in mock_accounts:
-            item = QListWidgetItem(f"{acc.service} | {acc.username}")
+            display_text = f"{acc.service}\n{acc.username}"
+            item = QListWidgetItem(display_text)
             item.setData(Qt.UserRole, acc)
             vault_win.account_list.addItem(item)
             

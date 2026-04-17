@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/Platform-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Platform">
 </p>
 
-VaultPy is a professional-grade, local-first password manager built with Python and PySide6. It features a modern, frameless UI designed for high-contrast visibility and maximum security, with a DPAPI-bound architecture that tethers your vault to your Windows machine.
+VaultPy is a professional-grade, local-first password manager built with Python and PySide6. It features the **'Midnight Vault'** signature UI — a modern, frameless aesthetic designed for premium dark-mode visibility and maximum security, featuring folder-based organization and a DPAPI-bound architecture.
 
 ---
 
@@ -47,7 +47,9 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 
 ---
 
-## ✨ Key Features (v1.3.0)
+## ✨ Key Features (v1.4.0 - Folders & UI Update)
+
+- **📁 Folder Organization**: Categorize your accounts into custom folders (Work, Personal, Social, etc.) for streamlined management and faster searching.
 
 - **🔐 DPAPI-Bound Memory Protection**: The Master Key (DEK) is sealed in RAM using Windows DPAPI with machine-bound entropy — never stored as plaintext.
 - **🔐 Triple-Wrap Architecture**: Your Data Encryption Key (DEK) is wrapped by **three independent providers**: Password, 24-word Phrase, and TOTP Secret.
@@ -61,11 +63,10 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 - **🛡️ Disaster Resiliency**: BIP39-style 24-word recovery seeds and phone-based recovery ensure you never lose access.
 - **💾 Portable Backups**: Export your entire vault as a standalone, encrypted **.pyvault** file.
 - **🔄 Seamless Migration**: Automated upgrade path from v1.2.x with backward-compatible Argon2 parameter detection.
-- **📅 Pro UI/UX**: Professional frameless window architecture with custom title bar, rounded corners, and high-contrast visuals.
-- **2FA Support (TOTP)**: Built-in generator with live countdown and high-visibility indicators.
-- **Strong Encryption**: All secrets protected by **AES-256-GCM** authenticated encryption.
+- **📅 Midnight Vault UI**: Complete visual overhaul featuring a 40px custom title bar, high-contrast Tokyo Night color palette, and premium micro-animations (Copy transitions, TOTP pulses).
+- **2FA Support (TOTP)**: Built-in generator with live countdown and high-visibility indicators, now with dynamic speed-alert color coding.
 
-## 🛡️ Security Architecture (v1.3.0)
+## 🛡️ Security Architecture (v1.4.0)
 
 VaultPy employs a defense-in-depth security model:
 
@@ -88,7 +89,7 @@ VaultPy employs a defense-in-depth security model:
 
 - **Password, Recovery Phrase, and TOTP**: All three unlock paths support automatic fallback to legacy parameters.
 - **TOTP Secret Migration**: Legacy XOR-obfuscated TOTP secrets are automatically migrated to DPAPI encryption on first successful login.
-- **No manual steps required**: Simply replace the old executable with the new one and log in normally.
+- **No manual steps required**: Simply replace the old executable with the new one and log in normally. The application will automatically migrate your database to support the new folder architecture.
 
 ## 🚀 Getting Started
 
