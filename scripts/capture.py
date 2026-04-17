@@ -78,14 +78,14 @@ def capture_screenshot():
         def finalize():
             # Capture Dialog
             screenshot = add_dialog.grab()
-            screenshot.save(os.path.join(assets_dir, "strength_meter_preview.png"))
-            print("Success: Captured strength_meter_preview.png")
+            screenshot.save(os.path.join(assets_dir, "strength_v140.png"))
+            print("Success: Captured strength_v140.png")
             
             # Capture Vault
             screenshot_vault = vault_win.grab()
-            screenshot_vault.save(os.path.join(assets_dir, "vault_preview.png"))
-            screenshot_vault.save(os.path.join(assets_dir, "hero.png")) # Also update Hero
-            print("Success: Captured vault_preview.png and hero.png")
+            screenshot_vault.save(os.path.join(assets_dir, "vault_v140.png"))
+            screenshot_vault.save(os.path.join(assets_dir, "hero_v140.png")) # Also update Hero
+            print("Success: Captured vault_v140.png and hero_v140.png")
             
             app.quit()
             
@@ -93,8 +93,8 @@ def capture_screenshot():
 
     def step_1_capture_login():
         screenshot = login_win.grab()
-        screenshot.save(os.path.join(assets_dir, "login_preview.png"))
-        print("Success: Captured login_preview.png")
+        screenshot.save(os.path.join(assets_dir, "login_v140.png"))
+        print("Success: Captured login_v140.png")
         QTimer.singleShot(100, step_2_capture_vault)
         
     # Wait 800ms for Login fade-in
