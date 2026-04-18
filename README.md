@@ -85,7 +85,7 @@ VaultPy employs a defense-in-depth security model:
 
 ## ⚠️ Important Notes for Upgrading from v1.2.4
 
-> **Your existing vault data is safe.** VaultPy v1.3.0 includes full backward compatibility with v1.2.4 databases. The application will automatically detect your old Argon2 parameters (t=3) and use them as fallback during authentication.
+> **Your existing vault data is safe.** VaultPy v1.4.0 includes full backward compatibility with v1.2.4 databases. The application will automatically detect your old Argon2 parameters (t=3) and use them as fallback during authentication.
 
 - **Password, Recovery Phrase, and TOTP**: All three unlock paths support automatic fallback to legacy parameters.
 - **TOTP Secret Migration**: Legacy XOR-obfuscated TOTP secrets are automatically migrated to DPAPI encryption on first successful login.

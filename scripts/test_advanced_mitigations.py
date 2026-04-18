@@ -16,7 +16,7 @@ from core.crypto import CryptoManager
 
 def run_advanced_mitigation_test():
     print("==================================================")
-    print("     VaultPy v1.3.0 Advanced Mitigation Test      ")
+    print("     VaultPy v1.4.0 Advanced Mitigation Test      ")
     print("==================================================")
     
     test_dir = os.path.join(os.getcwd(), "test_advanced_scratch")
@@ -140,7 +140,7 @@ def run_advanced_mitigation_test():
     print("Phase 2 (Seal Integrity):        PASSED [OK]")
     print("Phase 3 (Hardware Binding):      PASSED [OK]")
     print("==================================================")
-    print("SUMMARY: VaultPy v1.3.0 successfully defended against all advanced forgery attacks.")
+    print("SUMMARY: VaultPy v1.4.0 successfully defended against all advanced forgery attacks.")
 
 if __name__ == "__main__":
     run_advanced_mitigation_test()

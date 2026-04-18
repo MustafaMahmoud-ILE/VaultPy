@@ -13,7 +13,7 @@ from core.crypto import CryptoManager
 
 def run_security_suite():
     print("==================================================")
-    print("     VaultPy v1.3.0 Security Verification Suite   ")
+    print("     VaultPy v1.4.0 Security Verification Suite   ")
     print("==================================================")
     
     test_dir = os.path.join(os.getcwd(), "security_test_scratch")
@@ -30,7 +30,7 @@ def run_security_suite():
     password = "SuperSecretPassword123!"
     
     # SETUP
-    print("\n[+] Initializing Security Test Vault (v1.3.0)...")
+    print("\n[+] Initializing Security Test Vault (v1.4.0)...")
     auth.setup_vault(password)
     
     # Get DEK via JIT for reference

@@ -11,7 +11,7 @@ from core.auth import AuthManager
 
 def run_bruteforce_resilience_test():
     print("==================================================")
-    print("    VaultPy v1.3.0 - BRUTE-FORCE RESILIENCE TEST  ")
+    print("    VaultPy v1.4.0 - BRUTE-FORCE RESILIENCE TEST  ")
     print("==================================================")
     
     test_dir = os.path.abspath("test_bruteforce_scratch")

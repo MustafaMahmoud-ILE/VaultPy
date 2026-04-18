@@ -1,80 +1,33 @@
-# Byte-compiled / optimized / DLL files
+# --- VaultPy .gitignore ---
+
+# Environment & Bytecode
 __pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-bin/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-*.spec
-
-# PyInstaller
-#  Usually these files are written by a python script, and contain the binery data
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
-
-# Environments
-.env
-.venv
+*.pyc
+*.pyo
+*.pyd
+.Python
 env/
 venv/
-ENV/
-env.bak/
-venv.bak/
+.env
 
-# Database and sensitive data
+# Build & Distribution
+build/
+dist/
+*.spec
+VaultPy_v*.zip
+
+# Local Data (Crucial for Privacy)
 data/
 *.db
-*.sqlite
+vaultpy.lock
 
-# IDEs
+# IDES & Logs
 .vscode/
 .idea/
-.project
-.pydevproject
-.settings/
+*.log
+.pytest_cache/
 
-# OS files
-.DS_Store
-Thumbs.db
-
-# Release Assets
-*.zip
+# Test Scratch
+scratch/
+security_test_scratch/
+test_*.db

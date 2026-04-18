@@ -13,7 +13,7 @@ from core.auth import AuthManager
 
 def run_memory_protection_test():
     print("==================================================")
-    print("     VaultPy v1.3.0 Protected Key Verification    ")
+    print("     VaultPy v1.4.0 Protected Key Verification    ")
     print("==================================================")
     
     db_path = os.path.abspath("test_memory.db")

@@ -11,7 +11,7 @@ from core.crypto import CryptoManager
 
 def run_insider_threat_test():
     print("==================================================")
-    print("   VaultPy v1.3.0 - Insider Threat Verification   ")
+    print("   VaultPy v1.4.0 - Insider Threat Verification   ")
     print("==================================================")
     
     key_path = r"Software\VaultPy\SecurityState"

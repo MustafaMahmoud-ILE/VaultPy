@@ -39,7 +39,7 @@ ph = PasswordHasher(time_cost=OLD_ITERATIONS, memory_cost=OLD_MEMORY, parallelis
 old_hash = ph.hash(password, salt=salt)
 print(f"Old hash params: {old_hash.split(chr(36))[3]}")
 
-# === Test v1.3.0 unlock paths with old data ===
+# === Test v1.4.0 unlock paths with old data ===
 
 # TEST 1: Password unlock (try current → fallback compat)
 print("\n--- TEST 1: Password Unlock ---")

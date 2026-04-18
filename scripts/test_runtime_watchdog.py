@@ -6,7 +6,7 @@ import signal
 
 def run_runtime_defense_test():
     print("==================================================")
-    print("   VaultPy v1.3.0 - Runtime Defense Verification  ")
+    print("   VaultPy v1.4.0 - Runtime Defense Verification  ")
     print("==================================================")
     
     # Path to main.py

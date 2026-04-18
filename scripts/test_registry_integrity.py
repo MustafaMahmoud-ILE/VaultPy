@@ -26,7 +26,7 @@ def cleanup_registry():
 
 def run_registry_integrity_test():
     print("==================================================")
-    print("    VaultPy v1.3.0 - REGISTRY INTEGRITY TEST      ")
+    print("    VaultPy v1.4.0 - REGISTRY INTEGRITY TEST      ")
     print("==================================================")
     
     test_dir = os.path.abspath("test_integrity_scratch")
