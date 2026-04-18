@@ -16,6 +16,7 @@ from core.totp import TOTPManager
 from utils.clipboard import ClipboardManager
 from ui.add_account_dialog import AddAccountDialog
 from ui.components.title_bar import CustomTitleBar
+from ui.components.message_box import Alert
 from ui.theme import MidnightVault
 
 class VaultWindow(QWidget):
@@ -353,16 +354,13 @@ class VaultWindow(QWidget):
         self.update_btn.setStyleSheet("color: #a6e3a1; font-weight: bold; background: transparent; border: none;")
         self.update_btn.setEnabled(True)
         
-        msg = QMessageBox(self)
-        msg.setWindowTitle("VaultPy Update")
-        msg.setText(f"A new version ({version}) is available!")
-        msg.setInformativeText("Would you like to download and install it automatically?")
-        msg.setDetailedText(notes)
-        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        msg.setDefaultButton(QMessageBox.Yes)
-        msg.setStyleSheet("QLabel{ color: #cdd6f4; } QMessageBox{ background-color: #11111b; }")
+        full_msg = (
+            f"A new version ({version}) is available!\n\n"
+            "Would you like to download and install it automatically?\n\n"
+            f"Release Notes:\n{notes}"
+        )
         
-        if msg.exec() == QMessageBox.Yes:
+        if Alert.question(self, "VaultPy Update", full_msg):
             self.update_btn.setVisible(False)
             self.progress_bar.setVisible(True)
             self.status_label.setText("⏬ Downloading Update...")
@@ -597,7 +595,7 @@ class VaultWindow(QWidget):
                 )
                 self.refresh_folders()
                 self.refresh_accounts()
-            except Exception as e: QMessageBox.critical(self, "Error", f"Failed to save account: {e}")
+            except Exception as e: Alert.error(self, "Error", f"Failed to save account: {e}")
         self.active_dialog = None
 
     def show_edit_dialog(self, acc):
@@ -625,11 +623,11 @@ class VaultWindow(QWidget):
                 self.refresh_folders()
                 self.refresh_accounts()
                 self.on_account_selected()
-        except Exception as e: QMessageBox.critical(self, "Error", f"Failed to edit account: {e}")
+        except Exception as e: Alert.error(self, "Error", f"Failed to edit account: {e}")
         self.active_dialog = None
 
     def delete_account(self, acc_id):
-        if QMessageBox.question(self, "Confirm Delete", "Are you sure you want to delete this account?", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+        if Alert.question(self, "Confirm Delete", "Are you sure you want to delete this account?"):
             self.db.delete_account(acc_id)
             self.refresh_folders()
             self.refresh_accounts()
@@ -645,6 +643,6 @@ class VaultWindow(QWidget):
                 file_path += ".pyvault"
             try:
                 shutil.copy(self.db.db_path, file_path)
-                QMessageBox.information(self, "Success", f"Vault backup created successfully at:\n{file_path}")
+                Alert.success(self, "Success", f"Vault backup created successfully at:\n{file_path}")
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to create backup: {e}")
+                Alert.error(self, "Error", f"Failed to create backup: {e}")

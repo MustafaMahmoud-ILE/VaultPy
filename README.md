@@ -1,7 +1,7 @@
 # VaultPy 🔐
 
 <p align="center">
-  <img src="assets/hero_v140.png" width="100%" alt="VaultPy Hero Image">
+  <img src="assets/hero_v141.png" width="100%" alt="VaultPy Hero Image">
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 *The first line of defense. A minimalist, high-contrast entry point that welcomes you to your vault.*
 
 <p align="center">
-  <img src="assets/login_v140.png" width="80%" alt="Login Screen">
+  <img src="assets/login_v141.png" width="80%" alt="Login Screen">
 </p>
 
 ---
@@ -33,7 +33,7 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 *Your secure repository. Clean organization with real-time TOTP generation and searchable accounts.*
 
 <p align="center">
-  <img src="assets/vault_v140.png" width="90%" alt="Vault Screen">
+  <img src="assets/vault_v141.png" width="90%" alt="Vault Screen">
 </p>
 
 ---
@@ -42,12 +42,12 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 *Real-time security feedback. Visual indicators help you choose strong, entropy-rich passwords for every account.*
 
 <p align="center">
-  <img src="assets/strength_v140.png" width="70%" alt="Strength Meter Screen">
+  <img src="assets/strength_v141.png" width="70%" alt="Strength Meter Screen">
 </p>
 
 ---
 
-## ✨ Key Features (v1.4.0 - Folders & UI Update)
+## ✨ Key Features (v1.4.1 - Quick UI Fixes)
 
 - **📁 Folder Organization**: Categorize your accounts into custom folders (Work, Personal, Social, etc.) for streamlined management and faster searching.
 
@@ -66,7 +66,7 @@ VaultPy is designed with a premium, frameless aesthetic. Explore the interface b
 - **📅 Midnight Vault UI**: Complete visual overhaul featuring a 40px custom title bar, high-contrast Tokyo Night color palette, and premium micro-animations (Copy transitions, TOTP pulses).
 - **2FA Support (TOTP)**: Built-in generator with live countdown and high-visibility indicators, now with dynamic speed-alert color coding.
 
-## 🛡️ Security Architecture (v1.4.0)
+## 🛡️ Security Architecture (v1.4.1)
 
 VaultPy employs a defense-in-depth security model:
 
@@ -85,7 +85,7 @@ VaultPy employs a defense-in-depth security model:
 
 ## ⚠️ Important Notes for Upgrading from v1.2.4
 
-> **Your existing vault data is safe.** VaultPy v1.4.0 includes full backward compatibility with v1.2.4 databases. The application will automatically detect your old Argon2 parameters (t=3) and use them as fallback during authentication.
+> **Your existing vault data is safe.** VaultPy v1.4.1 includes full backward compatibility with v1.2.4 databases. The application will automatically detect your old Argon2 parameters (t=3) and use them as fallback during authentication.
 
 - **Password, Recovery Phrase, and TOTP**: All three unlock paths support automatic fallback to legacy parameters.
 - **TOTP Secret Migration**: Legacy XOR-obfuscated TOTP secrets are automatically migrated to DPAPI encryption on first successful login.

@@ -253,6 +253,11 @@ class AddAccountDialog(QDialog):
         visible = self.gen_group.isVisible()
         self.gen_group.setVisible(not visible)
         self.gen_toggle_btn.setText("✨ Generate" if visible else "🔼 Hide")
+        
+        # Force geometry update
+        self.updateGeometry()
+        # A tiny delay ensures the layout has updated before we shrink
+        QTimer.singleShot(1, self.adjustSize)
 
     def apply_generated(self):
         pwd = PasswordGenerator.generate(

@@ -27,8 +27,11 @@ class CustomTitleBar(QWidget):
                 border-top-left-radius: 16px;
                 border-top-right-radius: 16px;
             }}
-            QLabel#Title {{
+            QLabel {{
+                background: transparent;
                 color: {MidnightVault.TEXT_PRIMARY};
+            }}
+            QLabel#Title {{
                 font-weight: 600;
                 font-size: 12px;
                 margin-left: 5px;

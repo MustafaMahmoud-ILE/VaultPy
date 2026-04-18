@@ -11,7 +11,8 @@ from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QImage, QPixmap
 
 from ui.theme import MidnightVault
-from ui.components.title_bar import TitleBar
+from ui.components.title_bar import CustomTitleBar
+from ui.components.message_box import Alert
 
 class RecoverySetupDialog(QDialog):
     """Wizard to guide the user through Phrase and TOTP setup (Midnight Vault Edition)."""
@@ -53,7 +54,7 @@ class RecoverySetupDialog(QDialog):
         container_layout.setSpacing(0)
         
         # 1. Custom Title Bar
-        self.title_bar = TitleBar("🔐 Security Setup", parent=self)
+        self.title_bar = CustomTitleBar(self, "🔐 Security Setup")
         self.title_bar.close_btn.clicked.connect(self.reject)
         container_layout.addWidget(self.title_bar)
 
@@ -220,27 +221,25 @@ class RecoverySetupDialog(QDialog):
         return QPixmap.fromImage(qimg)
 
     def go_to_totp(self):
-        reply = QMessageBox.question(
+        if Alert.question(
             self, "Confirm Phrase", 
-            "Are you sure you've saved the 24 words? You cannot go back to see them easily later.",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        if reply == QMessageBox.Yes:
+            "Are you sure you've saved the 24 words? You cannot go back to see them easily later."
+        ):
             self.stack.setCurrentIndex(1)
 
     def on_verify_and_finish(self):
         code = self.otp_input.text().strip()
         if not code or len(code) != 6:
-            QMessageBox.warning(self, "Invalid Input", "Please enter the 6-digit code from your app.")
+            Alert.warn(self, "Invalid Input", "Please enter the 6-digit code from your app.")
             return
 
         import pyotp
         totp = pyotp.TOTP(self.totp_secret)
         if totp.verify(code):
-            QMessageBox.information(self, "Success", "Phone recovery linked successfully!")
+            Alert.success(self, "Success", "Phone recovery linked successfully!")
             self.accept()
         else:
-            QMessageBox.critical(self, "Verification Failed", "The code you entered is incorrect. Please check your app and try again.")
+            Alert.error(self, "Verification Failed", "The code you entered is incorrect. Please check your app and try again.")
             self.otp_input.clear()
 
     # Drag functionality

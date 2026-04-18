@@ -8,10 +8,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QPoint
 from PySide6.QtGui import QPixmap, QIcon, QColor
 from core.auth import AuthManager
-from ui.components.title_bar import CustomTitleBar
-from ui.recovery_setup_dialog import RecoverySetupDialog
-
 from ui.theme import MidnightVault
+from ui.components.title_bar import CustomTitleBar
+from ui.components.message_box import Alert
+from ui.recovery_setup_dialog import RecoverySetupDialog
 
 class LoginWindow(QWidget):
     """Window for master password setup and login (Midnight Vault Edition)."""
@@ -283,18 +283,14 @@ class LoginWindow(QWidget):
             self, "Import Vault", "", "VaultPy Backup (*.pyvault)"
         )
         if file_path:
-            confirm = QMessageBox.question(
-                self, "Confirm Import",
-                "Importing a vault will OVERWRITE your current data. Are you sure you want to proceed?",
-                QMessageBox.Yes | QMessageBox.No
-            )
-            if confirm == QMessageBox.Yes:
+            msg = "Importing a vault will OVERWRITE your current data. Are you sure you want to proceed?"
+            if Alert.question(self, "Confirm Import", msg):
                 try:
                     # Target is the current DB path
                     target_path = self.auth.db.db_path
                     shutil.copy(file_path, target_path)
                     
-                    QMessageBox.information(self, "Success", "Vault imported successfully. Please log in.")
+                    Alert.success(self, "Success", "Vault imported successfully. Please log in.")
                     
                     # Refresh UI mode based on imported DB
                     if self.auth.is_setup_required():
@@ -305,58 +301,54 @@ class LoginWindow(QWidget):
                     self.password_input.clear()
                     self.confirm_password_input.clear()
                 except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Failed to import vault: {e}")
+                    Alert.error(self, "Error", f"Failed to import vault: {e}")
 
     def handle_phrase_recovery(self):
         """Handle access restoration via 24-word phrase."""
-        from PySide6.QtWidgets import QInputDialog
-        phrase, ok = QInputDialog.getMultiLineText(self, "Vault Recovery", "Enter your 24-word recovery phrase:")
+        phrase, ok = Alert.input(self, "Vault Recovery", "Enter your 24-word recovery phrase:", placeholder="word1 word2 ...")
         if ok and phrase:
             if self.auth.unlock_with_recovery_phrase(phrase):
                 self._perform_password_reset_flow()
             else:
-                QMessageBox.critical(self, "Error", "Invalid Recovery Phrase. Access Denied.")
+                Alert.error(self, "Error", "Invalid Recovery Phrase. Access Denied.")
 
     def handle_otp_recovery(self):
         """Handle access restoration via TOTP 6-digit code."""
-        from PySide6.QtWidgets import QInputDialog
-        code, ok = QInputDialog.getText(self, "Phone Recovery", "Enter the 6-digit code from your Authenticator app:")
+        code, ok = Alert.input(self, "Phone Recovery", "Enter the 6-digit code from your Authenticator app:", placeholder="123456")
         if ok and code:
             if self.auth.unlock_with_totp(code):
                 self._perform_password_reset_flow()
             else:
-                QMessageBox.critical(self, "Error", "Invalid or expired OTP code. Access Denied.")
+                Alert.error(self, "Error", "Invalid or expired OTP code. Access Denied.")
 
     def _perform_password_reset_flow(self):
         """Internal helper to prompt for new password after recovery success."""
-        from PySide6.QtWidgets import QInputDialog
-        new_pass, ok = QInputDialog.getText(
+        new_pass, ok = Alert.input(
             self, "Reset Password", 
             "Identity Verified! Enter a NEW master password:", 
-            QLineEdit.Password
+            placeholder="New Master Password",
+            is_password=True
         )
         if ok and len(new_pass) >= 12:
             if self.auth.reset_password(new_pass):
-                QMessageBox.information(self, "Success", "Password reset successfully. Access granted.")
+                Alert.success(self, "Success", "Password reset successfully. Access granted.")
                 self.login_success.emit()
             else:
-                QMessageBox.critical(self, "Error", "Failed to update vault keys.")
+                Alert.error(self, "Error", "Failed to update vault keys.")
         elif ok:
-            QMessageBox.warning(self, "Security", "New password too short. Reset aborted.")
+            Alert.warn(self, "Security", "New password too short. Reset aborted.")
 
     def handle_reset(self):
         msg = "Are you sure you want to RESET your vault?\n\nThis will PERMANENTLY DELETE all accounts and passwords. This action is IRREVERSIBLE."
-        reply = QMessageBox.question(self, "Factory Reset", msg, QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            from PySide6.QtWidgets import QInputDialog
-            text, ok = QInputDialog.getText(self, "Security Confirmation", "To confirm data deletion, please type 'RESET' in uppercase:")
+        if Alert.question(self, "Factory Reset", msg):
+            text, ok = Alert.input(self, "Security Confirmation", "To confirm data deletion, please type 'RESET' in uppercase:", placeholder="TYPE RESET HERE")
             if ok and text == "RESET":
                 self.auth.db.factory_reset()
-                QMessageBox.information(self, "Success", "Vault wiped successfully.")
+                Alert.success(self, "Success", "Vault wiped successfully.")
                 self.set_setup_mode()
                 self.password_input.clear()
             elif ok:
-                QMessageBox.critical(self, "Error", "Invalid confirmation code. Reset cancelled.")
+                Alert.error(self, "Error", "Invalid confirmation code. Reset cancelled.")
 
     def apply_fade_in(self):
         self.opacity_effect = QGraphicsOpacityEffect(self)
@@ -384,10 +376,10 @@ class LoginWindow(QWidget):
         if self.is_setup:
             confirm = self.confirm_password_input.text()
             if len(password) < 12:
-                QMessageBox.warning(self, "Security Requirement", "Master password must be at least 12 characters long.")
+                Alert.warn(self, "Security Requirement", "Master password must be at least 12 characters long.")
                 return
             if password != confirm:
-                QMessageBox.warning(self, "Error", "Passwords do not match.")
+                Alert.warn(self, "Error", "Passwords do not match.")
                 return
             
             if self.auth.setup_vault(password):
@@ -410,17 +402,17 @@ class LoginWindow(QWidget):
                     dialog.exec()
                     self.login_success.emit()
                 else:
-                    QMessageBox.warning(self, "Error", "Invalid Master Password.")
+                    Alert.warn(self, "Error", "Invalid Master Password.")
                     self.password_input.clear()
             else:
                 if self.auth.unlock_vault(password):
                     self.login_success.emit()
                 else:
                     if self.auth.is_locked_out():
-                        QMessageBox.critical(self, "Security Lockout", "Too many failed attempts. Your vault has been locked for security.\n\nYou must use your recovery phrase or OTP to reset your password.")
+                        Alert.error(self, "Security Lockout", "Too many failed attempts. Your vault has been locked for security.\n\nYou must use your recovery phrase or OTP to reset your password.")
                         self.set_login_mode() # Refresh UI to locked state
                     else:
                         failed_count = self.auth.db.get_failed_attempts()
                         remaining = 5 - failed_count
-                        QMessageBox.warning(self, "Error", f"Invalid Master Password.\n\n{remaining} attempts remaining before lockout.")
+                        Alert.warn(self, "Error", f"Invalid Master Password.\n\n{remaining} attempts remaining before lockout.")
                     self.password_input.clear()
